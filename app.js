@@ -13,7 +13,9 @@
   "use strict";
 
   const CFG = window.VESPERA_CONFIG || {};
-  const SERVER = !!CFG.server; // served by server.js: keys stay server-side, real sign-in, synced data
+  // Only an explicit true enables server mode. The documented "auto" value
+  // must fall back to static mode so TMDB uses the public config key.
+  const SERVER = CFG.server === true || CFG.server === "true";
   const LIVE = SERVER || !!(CFG.tmdbKey && CFG.tmdbKey.trim());
   let FEAT = { omdb: !!(CFG.omdbKey && CFG.omdbKey.trim()), google: false, mail: false };
   const TITLES = window.VESPERA_TITLES;
