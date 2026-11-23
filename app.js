@@ -58,6 +58,9 @@
     try { const host = new URL(url).hostname; return RESUME_PARAMS.find(x => x.match.test(host))?.param || null; }
     catch { return null; }
   }
+  function isFrameXTVProvider(id, name = "") {
+    return `${id || ""} ${name || ""}`.toLowerCase().replace(/[^a-z0-9]/g, "").includes("framextv");
+  }
   function withResume(url, seconds) {
     const param = resumeParamFor(url);
     if (!param || !seconds) return url;
@@ -1149,11 +1152,11 @@
         ${active
           ? `<iframe id="watchFrame" src="${esc(withResume(active.url, resumeAt))}" title="${esc(t.title)} player" allow="autoplay; fullscreen; picture-in-picture" allowfullscreen referrerpolicy="no-referrer-when-downgrade"></iframe>`
           : `<div class="watch-empty"><div class="empty-icon">${icons.play}</div><h2>No playback provider available</h2><p>${error ? esc(error) : "There is currently no configured playback provider for this title."}</p></div>`}
-        ${active ? `<button class="watch-fullscreen" data-action="watch-fullscreen" aria-label="Fullscreen in this tab" title="Fullscreen in this tab">${icons.ext}<span>Fullscreen here</span></button>` : ""}
+        ${active ? `<button class="watch-fullscreen" data-action="watch-fullscreen" aria-label="Fullscreen in this tab" title="Fullscreen in this tab"${isFrameXTVProvider(active.id, active.name) ? "" : " hidden"}>${icons.ext}<span>Fullscreen here</span></button>` : ""}
       </div>
       ${providers.length ? `<section class="watch-servers">
         <div class="section-head"><h2>Playback servers</h2><span class="fine">Choose a server</span></div>
-        <div class="watch-server-list">${providers.map((p, i) => { const canResume = Boolean(resumeParamFor(p.url)); return `<button class="btn ${i === 0 ? "btn-primary" : "btn-ghost"} watch-server" data-action="watch-server" data-url="${esc(withResume(p.url, resumeAt))}" data-start-url="${esc(p.url)}" data-provider="${esc(p.id)}" data-resume-supported="${canResume}" aria-pressed="${i === 0}"><span class="watch-server-name">${icons.play} ${esc(p.name)}</span>${resumeAt ? `<small class="server-resume-status ${canResume ? "supported" : "unsupported"}">${canResume ? "Resume supported" : "Manual seek"}</small>` : ""}</button>`; }).join("")}</div>
+        <div class="watch-server-list">${providers.map((p, i) => { const canResume = Boolean(resumeParamFor(p.url)); return `<button class="btn ${i === 0 ? "btn-primary" : "btn-ghost"} watch-server" data-action="watch-server" data-url="${esc(withResume(p.url, resumeAt))}" data-start-url="${esc(p.url)}" data-provider="${esc(p.id)}" data-provider-name="${esc(p.name)}" data-resume-supported="${canResume}" aria-pressed="${i === 0}"><span class="watch-server-name">${icons.play} ${esc(p.name)}</span>${resumeAt ? `<small class="server-resume-status ${canResume ? "supported" : "unsupported"}">${canResume ? "Resume supported" : "Manual seek"}</small>` : ""}</button>`; }).join("")}</div>
       </section>` : ""}
       ${resumeAt && active ? `<div class="watch-resume" id="watchResume"><span aria-hidden="true">↻</span> <span>${resumeParamFor(active.url) ? `Continue from <b>${formatWatchTime(resumeAt)}</b>` : `You stopped at <b>${formatWatchTime(resumeAt)}</b>. This server can't resume automatically.`}</span>${providers.filter(p => p.id !== active.id && resumeParamFor(p.url)).map(p => `<button class="text-btn" data-action="watch-resume-server" data-url="${esc(withResume(p.url, resumeAt))}" data-provider="${esc(p.id)}">Resume on ${esc(p.name)}</button>`).join("")}<button class="text-btn" data-action="watch-start-over" data-url="${esc(active.url)}">Start over</button></div>` : ""}
       ${error && providers.length ? `<p class="fine">${esc(error)}</p>` : ""}
@@ -1167,7 +1170,7 @@
       .watch-player-wrap iframe{width:100%;height:100%;border:0;display:block}
       .watch-empty{height:100%;min-height:260px;display:flex;flex-direction:column;align-items:center;justify-content:center;text-align:center;padding:24px;color:var(--muted)}
       .watch-empty h2{color:var(--text);margin:14px 0 4px}
-      .watch-fullscreen{position:absolute;right:14px;bottom:14px;z-index:5;border:1px solid #ffffff55;border-radius:9px;padding:10px 12px;background:#111d;color:white;cursor:pointer;display:flex;align-items:center;gap:7px;font-size:12px;font-weight:650}.watch-fullscreen:hover{background:#263044}.watch-servers{margin-top:26px}.watch-server-list{display:flex;flex-wrap:wrap;gap:10px}.watch-server{display:flex;flex-direction:column;align-items:flex-start;gap:4px}.watch-server-name{display:flex;align-items:center;gap:7px}.server-resume-status{font-size:10px;line-height:1.2;opacity:.9;padding-left:23px}.server-resume-status.supported{color:#70d6a0}.server-resume-status.unsupported{color:#e9b56f}.watch-resume{display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin-top:14px;padding:12px 14px;border:1px solid var(--line);border-radius:10px;color:var(--muted);font-size:13px}.watch-resume b{color:var(--text)}
+      .watch-fullscreen[hidden]{display:none!important}.watch-fullscreen{position:absolute;right:14px;bottom:14px;z-index:5;border:1px solid #ffffff55;border-radius:9px;padding:10px 12px;background:#111d;color:white;cursor:pointer;display:flex;align-items:center;gap:7px;font-size:12px;font-weight:650}.watch-fullscreen:hover{background:#263044}.watch-servers{margin-top:26px}.watch-server-list{display:flex;flex-wrap:wrap;gap:10px}.watch-server{display:flex;flex-direction:column;align-items:flex-start;gap:4px}.watch-server-name{display:flex;align-items:center;gap:7px}.server-resume-status{font-size:10px;line-height:1.2;opacity:.9;padding-left:23px}.server-resume-status.supported{color:#70d6a0}.server-resume-status.unsupported{color:#e9b56f}.watch-resume{display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin-top:14px;padding:12px 14px;border:1px solid var(--line);border-radius:10px;color:var(--muted);font-size:13px}.watch-resume b{color:var(--text)}
       .watch-description{max-width:850px;color:var(--muted);line-height:1.7;margin-top:24px}
       @media(max-width:700px){.watch-page{padding:22px 16px 50px}.watch-heading{margin:12px 0 16px}.watch-player-wrap{border-radius:10px}}
     </style>`;
@@ -1767,6 +1770,9 @@
       if (a === "watch-resume-server") {
         const frame = document.getElementById("watchFrame");
         if (frame && act.dataset.url) frame.src = act.dataset.url;
+        const fullscreenButton = document.querySelector(".watch-fullscreen");
+        const resumeProvider = document.querySelector(`.watch-server[data-provider="${CSS.escape(act.dataset.provider || "")}"]`);
+        if (fullscreenButton) fullscreenButton.hidden = !isFrameXTVProvider(act.dataset.provider, resumeProvider?.dataset.providerName);
         document.querySelectorAll(".watch-server").forEach(b => {
           const selected = b.dataset.provider === act.dataset.provider;
           b.classList.toggle("btn-primary", selected); b.classList.toggle("btn-ghost", !selected);
@@ -1783,6 +1789,8 @@
       if (a === "watch-server") {
         const frame = document.getElementById("watchFrame");
         if (frame && act.dataset.url) frame.src = act.dataset.url;
+        const fullscreenButton = document.querySelector(".watch-fullscreen");
+        if (fullscreenButton) fullscreenButton.hidden = !isFrameXTVProvider(act.dataset.provider, act.dataset.providerName);
         document.querySelectorAll(".watch-server").forEach(b => {
           const selected = b === act;
           b.classList.toggle("btn-primary", selected);
