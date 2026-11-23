@@ -13,19 +13,8 @@
   "use strict";
 
   const CFG = window.VESPERA_CONFIG || {};
-  // SERVER: served by server.js (keys stay server-side, real sign-in, synced data).
-  // Otherwise "static" mode (e.g. GitHub Pages): browser calls TMDB directly with the key in config.js,
-  // profiles and lists live in this browser. config.server "auto" detects which one at startup.
-  let SERVER = CFG.server === true;
-  let LIVE = SERVER || !!(CFG.tmdbKey && CFG.tmdbKey.trim());
-  async function detectMode() {
-    if (CFG.server !== "auto") return;
-    try {
-      const r = await fetch("/api/features", { headers: { accept: "application/json" } });
-      SERVER = r.ok && (r.headers.get("content-type") || "").includes("json");
-    } catch { SERVER = false; }
-    LIVE = SERVER || !!(CFG.tmdbKey && CFG.tmdbKey.trim());
-  }
+  const SERVER = !!CFG.server; // served by server.js: keys stay server-side, real sign-in, synced data
+  const LIVE = SERVER || !!(CFG.tmdbKey && CFG.tmdbKey.trim());
   let FEAT = { omdb: !!(CFG.omdbKey && CFG.omdbKey.trim()), google: false, mail: false };
   const TITLES = window.VESPERA_TITLES;
   const COLLS = window.VESPERA_COLLECTIONS;
@@ -34,6 +23,86 @@
   const $app = document.getElementById("app");
   const IMG = "https://image.tmdb.org/t/p/";
   const PLAYBACK_API = (CFG.playbackApi || "https://flixstar-api.onrender.com/api").replace(/\/$/, "");
+  const WATCH_PROGRESS_KEY = "vespera.watch-progress";
+  const WATCH_PROGRESS_MIN_SECONDS = 120;
+  function readWatchProgress() {
+    try { const value = JSON.parse(localStorage.getItem(WATCH_PROGRESS_KEY) || "[]"); return Array.isArray(value) ? value : []; }
+    catch { return []; }
+  }
+  function progressKey(item) { return `${item.type}-${item.id}-${item.season || 0}-${item.episode || 0}`; }
+  function saveWatchProgress(item) {
+    const next = readWatchProgress().filter(x => progressKey(x) !== progressKey(item));
+    next.push({ ...item, updatedAt: Date.now() });
+    try { localStorage.setItem(WATCH_PROGRESS_KEY, JSON.stringify(next)); } catch {}
+    window.dispatchEvent(new Event("vespera-watch-progress"));
+  }
+  function removeWatchProgress(item) {
+    const next = readWatchProgress().filter(x => progressKey(x) !== progressKey(item));
+    try { localStorage.setItem(WATCH_PROGRESS_KEY, JSON.stringify(next)); } catch {}
+    window.dispatchEvent(new Event("vespera-watch-progress"));
+  }
+  function formatWatchTime(seconds) {
+    const total = Math.max(0, Math.floor(Number(seconds) || 0));
+    const h = Math.floor(total / 3600), m = Math.floor((total % 3600) / 60), sec = total % 60;
+    return h ? `${h}:${String(m).padStart(2, "0")}:${String(sec).padStart(2, "0")}` : `${m}:${String(sec).padStart(2, "0")}`;
+  }
+  const RESUME_PARAMS = [
+    { match: /(^|\.)vidlink\.pro$/i, param: "startAt" },
+    { match: /(^|\.)vidfast\.(pro|net|vc)$/i, param: "startAt" },
+    { match: /(^|\.)videasy\.(net|to)$/i, param: "progress" },
+    { match: /(^|\.)vidplus\.to$/i, param: "progress" },
+  ];
+  function resumeParamFor(url) {
+    try { const host = new URL(url).hostname; return RESUME_PARAMS.find(x => x.match.test(host))?.param || null; }
+    catch { return null; }
+  }
+  function withResume(url, seconds) {
+    const param = resumeParamFor(url);
+    if (!param || !seconds) return url;
+    try { const u = new URL(url); u.searchParams.set(param, String(Math.floor(seconds))); return u.toString(); }
+    catch { return url; }
+  }
+  function findSavedProgress(type, id, season, episode) {
+    return readWatchProgress().find(x => String(x.id) === String(id) && x.type === type &&
+      (type !== "tv" || (Number(x.season) === Number(season) && Number(x.episode) === Number(episode)))) || null;
+  }
+  function continueWatchingSection() {
+    const items = readWatchProgress().filter(x => x?.id && x?.progress > 0 && x?.progress < .95)
+      .sort((a, b) => (b.updatedAt || 0) - (a.updatedAt || 0)).slice(0, 10);
+    if (!items.length) return "";
+    const cards = items.map(item => {
+      const pct = Math.min(100, Math.max(0, Number(item.progress || 0) * 100));
+      const remaining = Math.max(0, Number(item.duration || 0) - Number(item.timestamp || 0));
+      const key = item.key || `${item.type}-${item.id}`;
+      const query = item.type === "tv" ? `?season=${encodeURIComponent(item.season || 1)}&episode=${encodeURIComponent(item.episode || 1)}` : "";
+      const image = item.backdrop || item.poster || "";
+      return `<article class="cw-card">
+        <a class="cw-poster" href="#/watch/${esc(key)}${query}" aria-label="Continue watching ${esc(item.title || item.name || "title")}">
+          ${image ? `<img src="${esc(image)}" alt="${esc(item.title || item.name || "")}" loading="lazy">` : `<span class="cw-placeholder">VESPERA</span>`}
+          <span class="cw-play">${icons.play}</span><span class="cw-progress"><i style="width:${pct}%"></i></span>
+        </a>
+        <div class="cw-meta"><a href="#/watch/${esc(key)}${query}" class="cw-title">${esc(item.title || item.name || "Untitled")}</a>
+          ${item.type === "tv" ? `<span class="cw-episode">S${Number(item.season) || 1} E${Number(item.episode) || 1}</span>` : ""}
+          <span class="cw-time">${remaining > 0 ? `${formatWatchTime(remaining)} left` : `${Math.round(pct)}% watched`}</span>
+        </div>
+        <button class="cw-remove" data-action="continue-remove" data-progress-key="${esc(progressKey(item))}" aria-label="Remove ${esc(item.title || item.name || "title")}" title="Remove from Continue Watching">×</button>
+      </article>`;
+    }).join("");
+    return `<section class="section cw-section" id="continueWatching">
+      <div class="section-head"><h2>Continue Watching</h2><div class="cw-head-actions">
+        <button class="cw-manage" data-action="continue-manage" aria-pressed="false">Manage</button>
+        <button class="cw-clear" data-action="continue-clear" hidden>Clear all</button>
+      </div></div>
+      <div class="cw-row-wrap"><div class="cw-row">${cards}</div></div>
+    </section>
+    <style>
+      .cw-head-actions{display:flex;align-items:center;gap:8px}.cw-manage,.cw-clear{border:1px solid var(--line);background:var(--panel,var(--line));color:var(--muted);border-radius:999px;padding:7px 12px;font:inherit;font-size:12px;cursor:pointer}.cw-manage[aria-pressed="true"]{color:var(--text);border-color:var(--accent)}.cw-clear{color:var(--muted)}
+      .cw-row-wrap{overflow-x:auto;scrollbar-width:thin;padding:2px 0 10px}.cw-row{display:grid;grid-auto-flow:column;grid-auto-columns:minmax(210px,24%);gap:14px;min-width:0}
+      .cw-card{position:relative;min-width:0;border:1px solid var(--line);border-radius:12px;overflow:hidden;background:var(--panel)}.cw-poster{position:relative;display:block;aspect-ratio:16/9;background:var(--panel,var(--line));overflow:hidden}.cw-poster img{width:100%;height:100%;display:block;object-fit:cover;transition:transform .35s}.cw-card:hover .cw-poster img{transform:scale(1.04)}.cw-placeholder{height:100%;display:grid;place-items:center;color:var(--muted);font-size:12px;letter-spacing:.18em}.cw-play{position:absolute;inset:0;display:grid;place-items:center;color:white;background:linear-gradient(0deg,rgba(0,0,0,.34),rgba(0,0,0,.06));opacity:0;transition:opacity .2s}.cw-card:hover .cw-play{opacity:1}.cw-play svg{width:42px;height:42px;padding:11px;border-radius:50%;background:rgba(0,0,0,.62)}.cw-progress{position:absolute;bottom:0;left:0;right:0;height:4px;background:rgba(255,255,255,.28)}.cw-progress i{display:block;height:100%;background:var(--accent);box-shadow:0 0 8px color-mix(in srgb,var(--accent) 55%,transparent)}
+      .cw-meta{display:grid;grid-template-columns:1fr auto;gap:5px 8px;padding:10px 11px 11px}.cw-title{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:var(--text);font-weight:650;font-size:13px;text-decoration:none}.cw-episode{color:var(--muted);font-size:11px}.cw-time{grid-column:1/-1;color:var(--muted);font-size:11px}.cw-remove{display:none;position:absolute;top:8px;right:8px;width:27px;height:27px;border:1px solid rgba(255,255,255,.25);border-radius:50%;background:rgba(8,10,14,.82);color:#fff;font-size:20px;line-height:1;cursor:pointer}.cw-section.cw-managing .cw-remove{display:block}.cw-section.cw-managing .cw-poster{filter:saturate(.8)}
+      @media(max-width:700px){.cw-row{grid-auto-columns:minmax(190px,68%);gap:11px}.cw-title{font-size:12px}}
+    </style>`;
+  }
   const TODAY = new Date().toISOString().slice(0, 10);
 
   // ---------- storage (safe) ----------
@@ -729,6 +798,7 @@
     rows.splice(1, 0, asyncRow("Top 10 Today", null, async () => uniq(await data.row(top)), { rank: true }));
     return `
     ${heroShell()}
+    <div id="continueWatchingMount">${continueWatchingSection()}</div>
     ${mine.length ? row("Your List", mine.slice(0, 14), "#/list") : ""}
     ${rows.join("")}
     <section class="section" id="homeColls">
@@ -764,7 +834,7 @@
     series: { h: "Series", p: "Shows to lose a weekend to.", hero: "Popular in series" },
     anime: { h: "Anime", p: "Hand-drawn worlds, films and series.", hero: "Popular in anime" },
   };
-  const sortsFor = () => LIVE ? { popular: "Popular", top: "Top rated", new: "Newest", old: "Oldest", az: "A–Z" } : { popular: "Featured", new: "Newest", old: "Oldest", az: "A–Z" };
+  const SORTS = LIVE ? { popular: "Popular", top: "Top rated", new: "Newest", old: "Oldest", az: "A–Z" } : { popular: "Featured", new: "Newest", old: "Oldest", az: "A–Z" };
 
   function pageSection(kind, params) {
     if (params.get("view") === "all" || params.get("g") || params.get("sort")) return pageBrowse(kind, params);
@@ -782,7 +852,6 @@
   let browseState = null;
   function pageBrowse(kind, params) {
     const conf = BROWSE[kind];
-    const SORTS = sortsFor();
     const g = params.get("g") || ""; let s = params.get("sort") || "popular"; if (!SORTS[s]) s = "popular";
     browseState = { kind, g, s, page: 1 };
     const keep = p => `view=all${p}`;
@@ -1061,8 +1130,11 @@
 
     const providers = playback.providers || [];
     const active = providers[0] || null;
+    const saved = findSavedProgress(kind, t.tmdbId, season, episode);
+    const resumeAt = saved && saved.timestamp >= 30 && (saved.progress ?? 0) < .95
+      ? Math.max(0, saved.timestamp - 5) : null;
     const episodeLabel = kind === "tv" ? ` · S${season} E${episode}` : "";
-    return `<div class="page watch-page">
+    return `<div class="page watch-page" id="watchPage" data-watch-type="${kind}" data-watch-id="${esc(t.tmdbId)}" data-watch-season="${season || ""}" data-watch-episode="${episode || ""}" data-watch-resume="${resumeAt || ""}">
       <a class="back-link" href="#/title/${esc(t.key)}">${icons.left} Back to details</a>
       <header class="watch-heading">
         <div><p class="eyebrow">NOW PLAYING</p><h1>${esc(t.title)}${episodeLabel}</h1>
@@ -1071,14 +1143,15 @@
       </header>
       <div class="watch-player-wrap" id="watchPlayer">
         ${active
-          ? `<iframe id="watchFrame" src="${esc(active.url)}" title="${esc(t.title)} player" allow="autoplay; fullscreen; picture-in-picture" allowfullscreen referrerpolicy="no-referrer-when-downgrade"></iframe>`
+          ? `<iframe id="watchFrame" src="${esc(withResume(active.url, resumeAt))}" title="${esc(t.title)} player" allow="autoplay; fullscreen; picture-in-picture" allowfullscreen referrerpolicy="no-referrer-when-downgrade"></iframe>`
           : `<div class="watch-empty"><div class="empty-icon">${icons.play}</div><h2>No playback provider available</h2><p>${error ? esc(error) : "There is currently no configured playback provider for this title."}</p></div>`}
         ${active ? `<button class="watch-fullscreen" data-action="watch-fullscreen" aria-label="Toggle fullscreen" title="Fullscreen">${icons.ext}</button>` : ""}
       </div>
       ${providers.length ? `<section class="watch-servers">
         <div class="section-head"><h2>Playback servers</h2><span class="fine">Choose a server</span></div>
-        <div class="watch-server-list">${providers.map((p, i) => `<button class="btn ${i === 0 ? "btn-primary" : "btn-ghost"} watch-server" data-action="watch-server" data-url="${esc(p.url)}" aria-pressed="${i === 0}">${icons.play} ${esc(p.name)}</button>`).join("")}</div>
+        <div class="watch-server-list">${providers.map((p, i) => `<button class="btn ${i === 0 ? "btn-primary" : "btn-ghost"} watch-server" data-action="watch-server" data-url="${esc(withResume(p.url, resumeAt))}" data-start-url="${esc(p.url)}" data-provider="${esc(p.id)}" aria-pressed="${i === 0}">${icons.play} ${esc(p.name)}</button>`).join("")}</div>
       </section>` : ""}
+      ${resumeAt && active ? `<div class="watch-resume" id="watchResume"><span aria-hidden="true">↻</span> <span>${resumeParamFor(active.url) ? `Continue from <b>${formatWatchTime(resumeAt)}</b>` : `You stopped at <b>${formatWatchTime(resumeAt)}</b>. This server can't resume automatically.`}</span>${providers.filter(p => p.id !== active.id && resumeParamFor(p.url)).map(p => `<button class="text-btn" data-action="watch-resume-server" data-url="${esc(withResume(p.url, resumeAt))}" data-provider="${esc(p.id)}">Resume on ${esc(p.name)}</button>`).join("")}<button class="text-btn" data-action="watch-start-over" data-url="${esc(active.url)}">Start over</button></div>` : ""}
       ${error && providers.length ? `<p class="fine">${esc(error)}</p>` : ""}
       ${t.synopsis ? `<p class="watch-description">${esc(t.synopsis)}</p>` : ""}
     </div>
@@ -1091,7 +1164,7 @@
       .watch-empty{height:100%;min-height:260px;display:flex;flex-direction:column;align-items:center;justify-content:center;text-align:center;padding:24px;color:var(--muted)}
       .watch-empty h2{color:var(--text);margin:14px 0 4px}
       .watch-fullscreen{position:absolute;right:14px;bottom:14px;border:0;border-radius:9px;padding:10px;background:#111c;color:white;cursor:pointer}
-      .watch-servers{margin-top:26px}.watch-server-list{display:flex;flex-wrap:wrap;gap:10px}
+      .watch-servers{margin-top:26px}.watch-server-list{display:flex;flex-wrap:wrap;gap:10px}.watch-resume{display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin-top:14px;padding:12px 14px;border:1px solid var(--line);border-radius:10px;color:var(--muted);font-size:13px}.watch-resume b{color:var(--text)}
       .watch-description{max-width:850px;color:var(--muted);line-height:1.7;margin-top:24px}
       @media(max-width:700px){.watch-page{padding:22px 16px 50px}.watch-heading{margin:12px 0 16px}.watch-player-wrap{border-radius:10px}}
     </style>`;
@@ -1123,8 +1196,8 @@
       <div class="page-head"><div><h1>Account</h1><p>Membership, profiles and preferences.</p></div></div>
       <div class="acct-grid">
         <section class="panel"><h2>Membership</h2>
-          ${SERVER ? `<div class="acct-row"><span>Email</span><b>${esc(a.email)}</b></div>
-          <div class="acct-row"><span>Membership</span><b>Invited member</b></div>` : `<div class="acct-row"><span>Account</span><b>Saved in this browser</b></div>`}
+          <div class="acct-row"><span>Email</span><b>${esc(a.email)}</b></div>
+          <div class="acct-row"><span>Membership</span><b>Invited member</b></div>
           <div class="acct-row"><span>Member since</span><b>${esc(since)}</b></div>
           <div class="acct-row"><span>Catalog</span><b>${LIVE ? "Live · TMDB" + (FEAT.omdb ? " + OMDb" : "") : "Sample"}</b></div>
         </section>
@@ -1157,31 +1230,14 @@
     return `<div class="gate"><div class="gate-card">
       ${brandHTML}
       <p class="eyebrow">After Dark</p>
-      ${SERVER ? `<h1>A screening guide for the few</h1>
+      <h1>A screening guide for the few</h1>
       <p class="lead">Vespera is invitation only. If someone saved you a seat, step inside.</p>
       <p class="hint">Already have an invitation?</p>
-      <a class="btn btn-primary btn-block" href="#/signin">Sign in</a>`
-      : `<h1>A screening guide for after dark</h1>
-      <p class="lead">Films, series and anime worth your night — what they are, who made them, and where to watch.</p>
-      <a class="btn btn-primary btn-block" href="#/signin">Step inside</a>`}
+      <a class="btn btn-primary btn-block" href="#/signin">Sign in</a>
       ${legal}${langSel()}
     </div></div>`;
   }
   function pageSignin(params) {
-    if (!SERVER) { // static hosting: no accounts, just a profile kept in this browser
-      return `<div class="gate"><div class="gate-card">
-        ${brandHTML}
-        <h1>Who's watching?</h1>
-        <p class="lead">Pick a name for your profile. Your list and settings are saved in this browser.</p>
-        <form id="nameForm" novalidate>
-          <div class="field"><label class="label" for="pname0">Your name</label>
-            <input class="input" id="pname0" maxlength="16" autocomplete="nickname" placeholder="e.g. Alex" required>
-            <p class="error" id="err" role="alert"></p></div>
-          <button class="btn btn-primary btn-block">Continue</button>
-        </form>
-        ${legal}${langSel()}
-      </div></div>`;
-    }
     const step = params.get("step") || "email"; const email = params.get("email") || "";
     if (step === "code") {
       return `<div class="gate"><div class="gate-card">
@@ -1355,7 +1411,9 @@
   // ---------- router ----------
   const PUBLIC = ["welcome", "signin"];
   let renderSeq = 0;
+  let watchProgressCleanup = null;
   async function render() {
+    if (watchProgressCleanup) { watchProgressCleanup(); watchProgressCleanup = null; }
     clearInterval(heroTimer); clearInterval(rotTimer); clipObserver?.disconnect(); lazyJobs.clear();
     const seq = ++renderSeq;
     document.documentElement.classList.toggle("perf", state.perf);
@@ -1407,12 +1465,15 @@
   }
 
   function mountPage(route, params, parts = []) {
-    if (route === "") mountHero(() => data.row((LIVE ? window.VESPERA_TMDB_ROWS : window.VESPERA_ROWS)[0]), "Tonight's pick");
+    if (route === "") {
+      mountHero(() => data.row((LIVE ? window.VESPERA_TMDB_ROWS : window.VESPERA_ROWS)[0]), "Tonight's pick");
+      liveColls(document.getElementById("homeColls"));
+    }
+    if (route === "watch") watchProgressCleanup = mountWatchProgress(parts[1], params);
     if (["movies", "series", "anime"].includes(route)) {
       if (document.getElementById("grid")) loadBrowse(false);
       else { const s = data.section(route); mountHero(() => data.load(s.hero), BROWSE[route].hero); }
     }
-    if (route === "" ) liveColls(document.getElementById("homeColls"));
     if (route === "constellations") liveColls(document.getElementById("collPage"));
     if (route === "clips") mountClips();
     if (route === "title") {
@@ -1444,19 +1505,6 @@
     if (route === "account") {
       const r = document.getElementById("regionSel");
       if (r) r.onchange = () => { store.set("region", r.value); toast(`Region set to ${r.options[r.selectedIndex].text}`); };
-    }
-    const nf = document.getElementById("nameForm");
-    if (nf) {
-      const inp = document.getElementById("pname0"); inp.focus();
-      nf.onsubmit = async e => {
-        e.preventDefault(); const name = inp.value.trim();
-        if (!name) { document.getElementById("err").textContent = "Enter a name."; return; }
-        store.set("auth", { local: true, since: store.get("auth", null)?.since || new Date().toISOString() });
-        if (!state.profiles.length) state.profiles = [{ id: "p" + Date.now().toString(36), name: name.slice(0, 16), color: 0 }];
-        state.currentId = state.profiles[0].id;
-        await ensureGenres().catch(() => {});
-        location.hash = state.profiles.length > 1 ? "#/who" : "#/";
-      };
     }
     const ef = document.getElementById("emailForm");
     if (ef) ef.onsubmit = async e => {
@@ -1491,6 +1539,44 @@
     mountLazy();
   }
 
+  function mountWatchProgress(key, params) {
+    const page = document.getElementById("watchPage");
+    const frame = document.getElementById("watchFrame");
+    if (!page) return null;
+    const type = page.dataset.watchType;
+    const id = page.dataset.watchId;
+    const season = page.dataset.watchSeason;
+    const episode = page.dataset.watchEpisode;
+    const t = items.get(key) || {};
+    const title = t.title || "Untitled";
+    const watchedItem = {
+      key, id: String(id), type, title, name: title,
+      poster: t.poster || null, backdrop: t.backdrop || null,
+      timestamp: 0, duration: 0, progress: 0,
+      ...(type === "tv" ? { season: Number(season) || 1, episode: Number(episode) || 1 } : {})
+    };
+    const handlePlayerMessage = event => {
+      let message = event.data;
+      if (typeof message === "string") { try { message = JSON.parse(message); } catch { return; } }
+      if (!message || typeof message !== "object") return;
+      if (message.type && message.type !== "PLAYER_EVENT") return;
+      let data = message.data ?? message;
+      if (typeof data === "string") { try { data = JSON.parse(data); } catch { return; } }
+      if (!data || typeof data !== "object") return;
+      const timestamp = Number(data.player_progress ?? data.timestamp ?? data.currentTime ?? data.position ?? data.seconds ?? data.time);
+      const duration = Number(data.player_duration ?? data.duration ?? data.totalDuration);
+      if (!Number.isFinite(timestamp) || !Number.isFinite(duration) || duration <= 0 || timestamp < 0) return;
+      const fraction = Math.min(1, Math.max(0, timestamp / duration));
+      const item = { ...watchedItem, timestamp, duration, progress: fraction };
+      if (fraction >= .95) { removeWatchProgress(item); return; }
+      if (timestamp < WATCH_PROGRESS_MIN_SECONDS) return;
+      saveWatchProgress(item);
+    };
+    window.addEventListener("message", handlePlayerMessage);
+
+    return () => window.removeEventListener("message", handlePlayerMessage);
+  }
+
   // ---------- global events ----------
   function closeMenus() {
     document.getElementById("pmenu")?.classList.remove("open");
@@ -1510,6 +1596,24 @@
     const q = document.getElementById("q"); if (q?.value) p.set("q", q.value);
     location.hash = location.hash.split("?")[0] + (p.toString() ? "?" + p : "");
   };
+
+  function refreshContinueWatching() {
+    const mount = document.getElementById("continueWatchingMount");
+    if (!mount) return;
+    const wasManaging = Boolean(mount.querySelector("#continueWatching.cw-managing"));
+    mount.innerHTML = continueWatchingSection();
+    if (wasManaging) {
+      const section = mount.querySelector("#continueWatching");
+      const button = section?.querySelector("[data-action=continue-manage]");
+      const clear = section?.querySelector("[data-action=continue-clear]");
+      section?.classList.add("cw-managing");
+      button?.setAttribute("aria-pressed", "true");
+      if (button) button.textContent = "Done";
+      if (clear) clear.hidden = false;
+    }
+  }
+  window.addEventListener("vespera-watch-progress", refreshContinueWatching);
+  window.addEventListener("storage", e => { if (e.key === WATCH_PROGRESS_KEY) refreshContinueWatching(); });
 
   document.addEventListener("click", e => {
     const t = e.target;
@@ -1582,6 +1686,40 @@
       if (a === "clip-next") clipStep(1);
       if (a === "expand") { const p = act.previousElementSibling; p.classList.toggle("clamp"); act.textContent = p.classList.contains("clamp") ? "Read more" : "Show less"; }
       if (a === "jump") { e.preventDefault(); document.getElementById("providers")?.scrollIntoView({ behavior: "smooth" }); }
+      if (a === "continue-manage") {
+        const section = document.getElementById("continueWatching");
+        if (section) {
+          const managing = !section.classList.contains("cw-managing");
+          section.classList.toggle("cw-managing", managing);
+          act.setAttribute("aria-pressed", String(managing));
+          act.textContent = managing ? "Done" : "Manage";
+          const clear = section.querySelector(".cw-clear"); if (clear) clear.hidden = !managing;
+        }
+      }
+      if (a === "continue-remove") {
+        const item = readWatchProgress().find(x => progressKey(x) === act.dataset.progressKey);
+        if (item) removeWatchProgress(item);
+      }
+      if (a === "continue-clear") {
+        try { localStorage.removeItem(WATCH_PROGRESS_KEY); } catch {}
+        window.dispatchEvent(new Event("vespera-watch-progress"));
+      }
+      if (a === "watch-resume-server") {
+        const frame = document.getElementById("watchFrame");
+        if (frame && act.dataset.url) frame.src = act.dataset.url;
+        document.querySelectorAll(".watch-server").forEach(b => {
+          const selected = b.dataset.provider === act.dataset.provider;
+          b.classList.toggle("btn-primary", selected); b.classList.toggle("btn-ghost", !selected);
+          b.setAttribute("aria-pressed", String(selected));
+        });
+      }
+      if (a === "watch-start-over") {
+        const frame = document.getElementById("watchFrame");
+        const server = document.querySelector('.watch-server[aria-pressed="true"]');
+        const url = server?.dataset.startUrl || act.dataset.url;
+        if (frame && url) frame.src = url;
+        document.getElementById("watchResume")?.remove();
+      }
       if (a === "watch-server") {
         const frame = document.getElementById("watchFrame");
         if (frame && act.dataset.url) frame.src = act.dataset.url;
@@ -1627,8 +1765,6 @@
   addEventListener("hashchange", render);
 
   async function boot() {
-    await detectMode();
-    if (!SERVER && store.get("auth", null)?.email && !store.get("auth", null)?.local) store.del("auth"); // stale server sign-in
     if (SERVER) {
       try { FEAT = { ...FEAT, ...(await api("features")) }; } catch {}
       try { hydrate(await api("me")); }
