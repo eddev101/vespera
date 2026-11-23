@@ -1083,10 +1083,8 @@
       <p class="fine">Availability in ${region()} from JustWatch via TMDB. Change region in Account.</p>
     </section>` : ""}
     ${t.seasons?.length ? `<section class="section" id="episodes">
-      <div class="section-head"><h2>Episodes</h2><div class="episode-tools" style="display:flex;align-items:center;gap:10px;flex-wrap:wrap">
-        <button class="btn btn-ghost episode-ratings-btn" data-action="episode-ratings" data-key="${esc(t.key)}">★ Episode ratings</button>
-        <select class="select" id="seasonSel" aria-label="Season">${t.seasons.map(s => `<option value="${s.n}">${esc(s.name)} · ${s.count} ep${s.year ? ` · ${s.year}` : ""}</option>`).join("")}</select>
-      </div></div>
+      <div class="section-head"><h2>Episodes</h2>
+        <select class="select" id="seasonSel" aria-label="Season">${t.seasons.map(s => `<option value="${s.n}">${esc(s.name)} · ${s.count} ep${s.year ? ` · ${s.year}` : ""}</option>`).join("")}</select></div>
       <div class="episodes" id="epList"></div>
     </section>` : ""}
     ${t.castFull?.length ? `<section class="section"><div class="section-head"><h2>Cast</h2></div>
@@ -1147,11 +1145,11 @@
         ${active
           ? `<iframe id="watchFrame" src="${esc(withResume(active.url, resumeAt))}" title="${esc(t.title)} player" allow="autoplay; fullscreen; picture-in-picture" allowfullscreen referrerpolicy="no-referrer-when-downgrade"></iframe>`
           : `<div class="watch-empty"><div class="empty-icon">${icons.play}</div><h2>No playback provider available</h2><p>${error ? esc(error) : "There is currently no configured playback provider for this title."}</p></div>`}
-        ${active ? `<button class="watch-fullscreen" data-action="watch-fullscreen" aria-label="Fullscreen in this tab" title="Fullscreen in this tab">${icons.ext}<span>Fullscreen here</span></button>` : ""}
+        ${active ? `<button class="watch-fullscreen" data-action="watch-fullscreen" aria-label="Toggle fullscreen" title="Fullscreen">${icons.ext}</button>` : ""}
       </div>
       ${providers.length ? `<section class="watch-servers">
         <div class="section-head"><h2>Playback servers</h2><span class="fine">Choose a server</span></div>
-        <div class="watch-server-list">${providers.map((p, i) => { const canResume = Boolean(resumeParamFor(p.url)); return `<button class="btn ${i === 0 ? "btn-primary" : "btn-ghost"} watch-server" data-action="watch-server" data-url="${esc(withResume(p.url, resumeAt))}" data-start-url="${esc(p.url)}" data-provider="${esc(p.id)}" data-resume-supported="${canResume}" aria-pressed="${i === 0}"><span class="watch-server-name">${icons.play} ${esc(p.name)}</span>${resumeAt ? `<small class="server-resume-status ${canResume ? "supported" : "unsupported"}">${canResume ? "Resume supported" : "Manual seek"}</small>` : ""}</button>`; }).join("")}</div>
+        <div class="watch-server-list">${providers.map((p, i) => `<button class="btn ${i === 0 ? "btn-primary" : "btn-ghost"} watch-server" data-action="watch-server" data-url="${esc(withResume(p.url, resumeAt))}" data-start-url="${esc(p.url)}" data-provider="${esc(p.id)}" aria-pressed="${i === 0}">${icons.play} ${esc(p.name)}</button>`).join("")}</div>
       </section>` : ""}
       ${resumeAt && active ? `<div class="watch-resume" id="watchResume"><span aria-hidden="true">↻</span> <span>${resumeParamFor(active.url) ? `Continue from <b>${formatWatchTime(resumeAt)}</b>` : `You stopped at <b>${formatWatchTime(resumeAt)}</b>. This server can't resume automatically.`}</span>${providers.filter(p => p.id !== active.id && resumeParamFor(p.url)).map(p => `<button class="text-btn" data-action="watch-resume-server" data-url="${esc(withResume(p.url, resumeAt))}" data-provider="${esc(p.id)}">Resume on ${esc(p.name)}</button>`).join("")}<button class="text-btn" data-action="watch-start-over" data-url="${esc(active.url)}">Start over</button></div>` : ""}
       ${error && providers.length ? `<p class="fine">${esc(error)}</p>` : ""}
@@ -1165,67 +1163,11 @@
       .watch-player-wrap iframe{width:100%;height:100%;border:0;display:block}
       .watch-empty{height:100%;min-height:260px;display:flex;flex-direction:column;align-items:center;justify-content:center;text-align:center;padding:24px;color:var(--muted)}
       .watch-empty h2{color:var(--text);margin:14px 0 4px}
-      .watch-fullscreen{position:absolute;right:14px;bottom:14px;z-index:5;border:1px solid #ffffff55;border-radius:9px;padding:10px 12px;background:#111d;color:white;cursor:pointer;display:flex;align-items:center;gap:7px;font-size:12px;font-weight:650}.watch-fullscreen:hover{background:#263044}.watch-servers{margin-top:26px}.watch-server-list{display:flex;flex-wrap:wrap;gap:10px}.watch-server{display:flex;flex-direction:column;align-items:flex-start;gap:4px}.watch-server-name{display:flex;align-items:center;gap:7px}.server-resume-status{font-size:10px;line-height:1.2;opacity:.9;padding-left:23px}.server-resume-status.supported{color:#70d6a0}.server-resume-status.unsupported{color:#e9b56f}.watch-resume{display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin-top:14px;padding:12px 14px;border:1px solid var(--line);border-radius:10px;color:var(--muted);font-size:13px}.watch-resume b{color:var(--text)}
+      .watch-fullscreen{position:absolute;right:14px;bottom:14px;border:0;border-radius:9px;padding:10px;background:#111c;color:white;cursor:pointer}
+      .watch-servers{margin-top:26px}.watch-server-list{display:flex;flex-wrap:wrap;gap:10px}.watch-resume{display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin-top:14px;padding:12px 14px;border:1px solid var(--line);border-radius:10px;color:var(--muted);font-size:13px}.watch-resume b{color:var(--text)}
       .watch-description{max-width:850px;color:var(--muted);line-height:1.7;margin-top:24px}
       @media(max-width:700px){.watch-page{padding:22px 16px 50px}.watch-heading{margin:12px 0 16px}.watch-player-wrap{border-radius:10px}}
     </style>`;
-  }
-
-  async function openEpisodeRatings(t) {
-    const total = Math.max(1, Number(t.seasons?.length || 1));
-    modal(`<div class="episode-ratings-head"><div><p class="eyebrow">SERIES GUIDE</p><h2>Episode Ratings</h2><p>${esc(t.title)} · IMDb ratings where available, otherwise TMDB</p></div><button class="icon-btn" data-close aria-label="Close ratings">×</button></div>
-      <div class="episode-ratings-legend"><span><i class="excellent"></i>9.0+</span><span><i class="great"></i>8.0–8.9</span><span><i class="good"></i>7.0–7.9</span><span><i class="average"></i>6.0–6.9</span><span><i class="low"></i>Below 6</span><span><i class="unrated"></i>Not rated</span></div>
-      <div class="episode-ratings-content" id="episodeRatingsContent"><div class="ratings-loading"><span class="spinner"></span>Loading episode ratings…</div></div>
-      <style>
-        .episode-ratings-modal{width:min(94vw,980px);max-height:88vh;overflow:auto}.episode-ratings-head{display:flex;justify-content:space-between;align-items:flex-start;gap:16px}.episode-ratings-head h2{margin:3px 0 5px}.episode-ratings-head p:not(.eyebrow){margin:0;color:var(--muted);font-size:13px}.episode-ratings-legend{display:flex;flex-wrap:wrap;gap:12px;margin:18px 0;font-size:11px;color:var(--muted)}.episode-ratings-legend span{display:flex;align-items:center;gap:5px}.episode-ratings-legend i{width:9px;height:9px;border-radius:3px;background:#555}.episode-ratings-legend .excellent{background:#1c9b63}.episode-ratings-legend .great{background:#59a86b}.episode-ratings-legend .good{background:#a4ad4a}.episode-ratings-legend .average{background:#c28b38}.episode-ratings-legend .low{background:#b85d55}.episode-ratings-legend .unrated{background:#626875}.episode-ratings-scroll{overflow:auto;border:1px solid var(--line);border-radius:10px}.episode-ratings-grid{display:grid;grid-auto-flow:row;grid-auto-rows:40px;min-width:max-content}.episode-ratings-grid>div{display:flex;align-items:center;justify-content:center;border-right:1px solid var(--line);border-bottom:1px solid var(--line);font-size:12px}.episode-ratings-grid .season-head,.episode-ratings-grid .ep-label,.episode-ratings-grid .avg-label{font-weight:700;color:var(--muted);background:var(--panel)}.episode-ratings-grid .ep-label{position:sticky;left:0;z-index:1}.episode-ratings-grid .rating-cell{font-weight:700}.episode-ratings-grid .excellent{background:#1c9b6330;color:#61d69b}.episode-ratings-grid .great{background:#59a86b30;color:#9bd49e}.episode-ratings-grid .good{background:#a4ad4a30;color:#c6d17c}.episode-ratings-grid .average{background:#c28b3830;color:#e6b768}.episode-ratings-grid .low{background:#b85d5530;color:#e58d82}.episode-ratings-grid .unrated{color:var(--muted)}.ratings-loading{display:flex;align-items:center;gap:10px;color:var(--muted);padding:28px 0}.episode-ratings-note{font-size:12px;color:var(--muted);margin-top:12px}.episode-ratings-note a{color:var(--accent)}
-      </style>`, async (back, close) => {
-      const box = back.querySelector("#episodeRatingsContent");
-      const ratingClass = rating => !rating ? "unrated" : rating >= 9 ? "excellent" : rating >= 8 ? "great" : rating >= 7 ? "good" : rating >= 6 ? "average" : "low";
-      try {
-        const [imdbResult, seasonResults] = await Promise.all([
-          fetch(`${PLAYBACK_API}/tv/${encodeURIComponent(t.tmdbId)}/imdb-ratings`, { headers: { accept: "application/json" } }).then(r => r.ok ? r.json() : null).catch(() => null),
-          Promise.all(Array.from({ length: total }, (_, i) => {
-            const n = Number(t.seasons?.[i]?.n || i + 1);
-            return tmdb(`tv/${t.tmdbId}/season/${n}`).then(x => [n, x.episodes || []]).catch(() => [n, []]);
-          }))
-        ]);
-        if (!box.isConnected) return;
-        const seasons = Object.fromEntries(seasonResults);
-        const seasonNumbers = Object.keys(seasons).sort((a,b) => Number(a)-Number(b));
-        const maxEpisodes = Math.max(0, ...Object.values(seasons).map(x => x.length));
-        const imdb = imdbResult?.seasons || {};
-        const getRating = (sn, ep) => {
-          if (!ep) return { rating: null, source: null, votes: null };
-          const item = (imdb[sn] || []).find(x => Number(x.episode_number) === Number(ep.episode_number));
-          if (item?.rating) return { rating: Number(item.rating), source: "IMDb", votes: item.votes };
-          const score = Number(ep.vote_average);
-          return score > 0 ? { rating: score, source: "TMDB", votes: null } : { rating: null, source: null, votes: null };
-        };
-        const cols = `70px repeat(${seasonNumbers.length},64px)`;
-        let cells = `<div class="season-head"></div>${seasonNumbers.map(n => `<div class="season-head">S${n}</div>`).join("")}`;
-        for (let epNo = 1; epNo <= maxEpisodes; epNo++) {
-          cells += `<div class="ep-label">E${epNo}</div>`;
-          for (const sn of seasonNumbers) {
-            const ep = (seasons[sn] || []).find(x => Number(x.episode_number) === epNo);
-            const r = getRating(sn, ep);
-            const value = r.rating ? r.rating.toFixed(1) : "—";
-            const title = ep ? `${ep.name || `Episode ${epNo}`} · ${r.rating ? `${value} (${r.source}${r.votes ? `, ${Number(r.votes).toLocaleString()} votes` : ""})` : "Not rated"}` : "Episode not available";
-            cells += `<div class="rating-cell ${ratingClass(r.rating)}" title="${esc(title)}">${value}</div>`;
-          }
-        }
-        cells += `<div class="avg-label">AVG</div>`;
-        for (const sn of seasonNumbers) {
-          const values = (seasons[sn] || []).map(ep => getRating(sn, ep).rating).filter(x => Number.isFinite(x) && x > 0);
-          const avg = values.length ? values.reduce((a,b) => a+b, 0) / values.length : null;
-          cells += `<div class="rating-cell ${ratingClass(avg)}">${avg ? avg.toFixed(1) : "—"}</div>`;
-        }
-        const imdbCount = Object.values(imdb).reduce((n, arr) => n + (arr || []).filter(x => x.rating).length, 0);
-        const imdbLink = imdbResult?.imdbId ? ` · <a href="https://www.imdb.com/title/${encodeURIComponent(imdbResult.imdbId)}/episodes" target="_blank" rel="noopener noreferrer">View on IMDb</a>` : "";
-        box.innerHTML = `<div class="episode-ratings-scroll"><div class="episode-ratings-grid" style="grid-template-columns:${cols}">${cells}</div></div><p class="episode-ratings-note">${imdbCount ? `IMDb ratings available for ${imdbCount} episodes; remaining scores use TMDB when available.` : "IMDb ratings are currently unavailable; showing TMDB episode scores where available."}${imdbLink}</p>`;
-      } catch (err) {
-        if (box.isConnected) box.innerHTML = `<p class="fine">Couldn't load episode ratings right now. Please try again later.</p>`;
-      }
-    }, "episode-ratings-modal");
   }
 
   async function loadSeason(t, n) {
@@ -1790,17 +1732,10 @@
       }
       if (a === "watch-fullscreen") {
         const player = document.getElementById("watchPlayer");
-        const request = player?.requestFullscreen || player?.webkitRequestFullscreen;
-        if (document.fullscreenElement) {
-          (document.exitFullscreen || document.webkitExitFullscreen)?.call(document)?.catch?.(() => {});
-        } else if (request) {
-          try { const result = request.call(player); result?.catch?.(() => {}); } catch (err) { console.warn("Fullscreen is unavailable in this browser", err); }
-        } else {
-          toast("Use the player’s own fullscreen control on this browser");
+        if (player) {
+          if (document.fullscreenElement) document.exitFullscreen().catch(() => {});
+          else player.requestFullscreen?.().catch(() => {});
         }
-      }
-      if (a === "episode-ratings") {
-        detail(act.dataset.key).then(title => { if (title?.tmdbId) openEpisodeRatings(title); }).catch(() => toast("Couldn't load series details"));
       }
       if (a === "google") { if (SERVER && FEAT.google) location.href = "/api/auth/google"; else toast("Google sign-in isn't set up yet — use an email code"); }
       if (a === "privacy") modal(`<h2>Privacy</h2><p>${SERVER ? "Vespera saves your email, profiles, list and preferences to your account so they follow you between devices. A sign-in cookie keeps you signed in for 30 days." : "Vespera keeps your profiles, list and preferences in this browser."} Title data and images come from TMDB${FEAT.omdb ? " and OMDb" : ""}; trailers are embedded from YouTube.</p><div class="modal-actions"><button class="btn btn-primary" data-close>Got it</button></div>`);
