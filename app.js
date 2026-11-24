@@ -135,10 +135,9 @@
   }
   const SYNC_KEYS = ["profiles", "lists", "perf", "autoplay", "region", "lang"];
   let hydrating = false, syncTimer = null;
-  function queueSync(k) {
-    if (!SERVER || hydrating || !SYNC_KEYS.includes(k)) return;
-    clearTimeout(syncTimer); syncTimer = setTimeout(pushData, 600);
-  }
+  // Guest mode has no account session. Cross-device transfer is handled by
+  // the explicit backup import/export controls in Settings.
+  function queueSync(k) { /* local-first guest mode */ }
   function pushData() {
     if (!store.get("auth", null)) return;
     api("me/data", "PUT", {
@@ -627,7 +626,7 @@
   // ---------- components ----------
   function card(t) {
     const saved = state.isSaved(t.key);
-    return `<div class="card" role="link" tabindex="0" data-go="#/title/${esc(t.key)}" data-key="${esc(t.key)}" data-title="${esc((t.title || "").toLowerCase())}" aria-label="${esc(t.title)}">
+    return `<div class="card" role="button" tabindex="0" data-preview="${esc(t.key)}" data-key="${esc(t.key)}" data-title="${esc((t.title || "").toLowerCase())}" aria-label="${esc(t.title)}">
       ${posterHTML(t)}
       ${badge(t)}
       ${saved ? `<span class="saved-mark" title="On My List">${icons.check}</span>` : ""}
@@ -635,7 +634,7 @@
         <b>${esc(t.title)}</b>
         <div class="meta">${t.year ? `<span>${t.year}</span><span class="dot"></span>` : ""}<span>${esc((t.genres || []).slice(0, 2).join(", ") || typeLabel(t))}</span>${t.vote ? `<span class="dot"></span><span>★ ${t.vote.toFixed(1)}</span>` : ""}</div>
         <div class="row-btns">
-          <span class="btn btn-light">${icons.info} Details</span>
+          <span class="btn btn-light">${icons.info} Preview</span>
           <button class="icon-btn" data-save="${esc(t.key)}" aria-label="${saved ? "Remove from" : "Add to"} My List">${saved ? icons.check : icons.plus}</button>
         </div>
       </div>
@@ -675,7 +674,7 @@
         box.innerHTML = `<div class="sl-main">${wideHTML(t, true)}
           <div class="sl-info"><p class="eyebrow">${esc(typeLabel(t))}${t.year ? " · " + t.year : ""}</p>
             <h3>${esc(t.title)}</h3><div class="score-row">${scoreChips(t)}</div><p>${esc(t.synopsis)}</p>
-            <div class="hero-actions"><a class="btn btn-light" href="#/title/${esc(t.key)}">${icons.info} Details</a>
+            <div class="hero-actions"><button class="btn btn-light" data-preview="${esc(t.key)}">${icons.info} Preview</button>
             <button class="btn btn-ghost" data-save="${esc(t.key)}">${saved ? icons.check + " On My List" : icons.plus + " My List"}</button></div></div></div>
           <div class="sl-list">${list.map((x, j) => `<button class="sl-item ${j === i ? "on" : ""}" data-sl="${j}"><span class="sl-thumb">${posterHTML(x)}</span><span><b>${esc(x.title)}</b><small>${x.year || ""}${x.genres?.[0] ? " · " + esc(x.genres[0]) : ""}</small></span></button>`).join("")}</div>`;
       };
@@ -720,11 +719,10 @@
             ${state.profiles.length < 5 ? `<button data-action="add-profile"><span class="add-av">+</span><span>Add</span></button>` : ""}
           </div>
           <hr>
-          <a class="pmenu-item" href="#/account" role="menuitem">${icons.user} Account</a>
           <a class="pmenu-item" href="#/who/manage" role="menuitem">${icons.users} Manage profiles</a>
           <button class="pmenu-item" data-action="perf" role="menuitemcheckbox" aria-checked="${state.perf}">${icons.gauge} Performance mode <span class="switch ${state.perf ? "on" : ""}"></span></button>
           <hr>
-          <button class="pmenu-item pmenu-signout" data-action="signout" role="menuitem">${icons.out} Sign out</button>
+          <a class="pmenu-item" href="#/account" role="menuitem">${icons.user} Settings &amp; backup</a>
         </div>
       </div>
     </header>
@@ -766,7 +764,7 @@
         <div class="meta">${t.genres?.[0] ? `<span>${esc(t.genres[0])}</span><span class="dot"></span>` : ""}${t.year ? `<span>${t.year}</span><span class="dot"></span>` : ""}${t.runtime ? `<span>${esc(t.runtime)}</span><span class="dot"></span>` : ""}<span class="muted">${esc(typeLabel(t))}</span></div>
         <p class="hero-syn">${esc(t.synopsis)}</p>
         <div class="hero-actions">
-          <a class="btn btn-light" href="#/title/${esc(t.key)}">${icons.info} More details</a>
+          <button class="btn btn-light" data-preview="${esc(t.key)}">${icons.info} Preview</button>
           <button class="btn btn-ghost" data-save="${esc(t.key)}">${saved ? icons.check + " On My List" : icons.plus + " My List"}</button>
         </div>`;
       const aw = awardsShort(t.awards); const cs = collsFor(t);
@@ -911,10 +909,17 @@
   }
 
   function pageCollections() {
-    const fr = LIVE ? window.VESPERA_FRANCHISES.map(n => asyncRow(n, null, async () => (await data.franchise(n)).list)) : [];
-    return `<div class="page" id="collPage"><div class="page-head"><div><h1>Constellations</h1><p>Hand-picked universes — by maker, place or idea${LIVE ? ", plus every major franchise in order" : ""}.</p></div></div>
-      <div class="coll-grid">${COLLS.map(c => collCard(c)).join("")}</div></div>
-      ${fr.length ? `<div class="section-intro" style="margin-top:46px"><div><h1 style="font-size:clamp(26px,3.4vw,38px)">Franchises</h1><p>Every film in release order.</p></div></div>${fr.join("")}` : ""}`;
+    const curated = COLLS.map(c => asyncRow(c.name, `#/constellations/${c.id}`, async () => data.collection(c)));
+    const names = LIVE && Array.isArray(window.VESPERA_FRANCHISES) ? window.VESPERA_FRANCHISES : [];
+    const franchises = names.map(n => asyncRow(n, null, async () => (await data.franchise(n)).list));
+    return `${heroShell()}
+      <div class="section-intro constellation-intro"><div><p class="eyebrow">Explore the multiverse</p><h1>Constellations</h1><p>Worlds, sagas and stories worth getting lost in.</p></div>
+        <div class="constellation-search"><span>${icons.search}</span><input id="constellationSearch" type="search" placeholder="Find a universe or franchise" aria-label="Search constellations"></div>
+      </div>
+      <div id="constellationShelves">${curated.join("")}${franchises.length ? `<div class="section-intro franchise-heading"><div><h2>Franchises</h2><p>Explore every universe, film by film.</p></div></div>${franchises.join("")}` : ""}</div>
+      <style>
+        .constellation-intro{display:flex;align-items:end;justify-content:space-between;gap:24px;padding:32px var(--gutter) 12px}.constellation-intro h1{font-size:clamp(30px,4vw,48px);margin:4px 0}.constellation-intro p:not(.eyebrow){color:var(--muted);margin:0}.constellation-search{display:flex;align-items:center;gap:9px;width:min(340px,100%);padding:11px 14px;border:1px solid var(--line);border-radius:999px;background:var(--panel)}.constellation-search input{width:100%;min-width:0;border:0;outline:0;background:transparent;color:var(--text);font:inherit}.franchise-heading{padding:30px var(--gutter) 0}.franchise-heading h2{font-size:24px;margin:0 0 5px}.franchise-heading p{color:var(--muted);margin:0}@media(max-width:700px){.constellation-intro{align-items:stretch;flex-direction:column}.constellation-search{width:100%}}
+      </style>`;
   }
   async function pageCollection(id) {
     const c = COLLS.find(x => x.id === id); if (!c) return notFound();
@@ -928,12 +933,12 @@
     const pairs = await data.pairings();
     return `<div class="page"><div class="page-head"><div><h1>Pairings</h1><p>Loved one? Here's its other half.</p></div></div>
       <div class="spot-grid">${pairs.map(([a, b]) => `
-        <a class="spot" href="#/title/${esc(b.key)}">
+        <div class="spot" role="button" tabindex="0" data-preview="${esc(b.key)}">
           <div class="spot-art">${wideHTML(b)}<span>${esc(b.title)}</span></div>
           <div class="spot-body"><small>If you loved ${esc(a.title)}</small>
           <p>${esc(b.synopsis)}</p>
           <div class="meta" style="margin-top:12px;color:var(--muted)"><span>${esc(typeLabel(b))}</span>${b.year ? `<span class="dot"></span><span>${b.year}</span>` : ""}${(b.genres || []).length ? `<span class="dot"></span><span>${esc(b.genres.slice(0, 2).join(" + "))}</span>` : ""}</div></div>
-        </a>`).join("")}</div></div>`;
+        </div>`).join("")}</div></div>`;
   }
 
   // Clips — vertical feed of official trailers
@@ -951,7 +956,7 @@
           <div class="score-row clip-scores">${scoreChips(t)}</div>
           <p class="clip-syn">${esc(t.synopsis)}</p>
           <div class="hero-actions">
-            <a class="btn btn-light" href="#/title/${esc(t.key)}">${icons.info} More info</a>
+            <button class="btn btn-light" data-preview="${esc(t.key)}">${icons.info} Preview</button>
             <button class="btn btn-ghost" data-save="${esc(t.key)}">${state.isSaved(t.key) ? icons.check + " On My List" : icons.plus + " My List"}</button>
           </div>
         </div>
@@ -1047,6 +1052,43 @@
         : empty(f.q ? `Nothing for “${esc(f.q)}”` : "No matches", "Check the spelling, loosen a filter, or try a person or year.",
           FEAT.assistant && f.q ? `<button class="btn btn-primary" data-action="ask-ai" style="margin-top:18px">${icons.spark} Ask the AI instead</button>` : "");
     } catch (err) { console.warn("Vespera search failed:", err); if (seq === searchSeq) res.innerHTML = failBox(); }
+  }
+
+  async function openTitlePreview(key) {
+    const cached = items.get(key);
+    if (!cached) return;
+    modal(`<div class="tp-loading"><div class="loading-spot skel"></div><p>Opening preview…</p></div>
+      <style>
+        .modal.title-preview-modal{width:min(94vw,980px);max-height:92vh;padding:0;overflow:auto;border:1px solid rgba(255,255,255,.16);background:linear-gradient(145deg,#132a35f2,#10202cf5 48%,#171522f7);box-shadow:0 28px 100px #000b;color:#f7f8fb}.title-preview-modal .tp-loading{padding:35px}.tp-loading .loading-spot{height:280px}.tp-hero{position:relative;min-height:300px;display:flex;align-items:end;padding:30px;background-size:cover;background-position:center;isolation:isolate}.tp-hero:before{content:"";position:absolute;inset:0;z-index:-1;background:linear-gradient(0deg,rgba(5,13,20,.98),rgba(5,13,20,.25) 75%),linear-gradient(90deg,rgba(3,12,18,.55),transparent)}.tp-close{position:absolute;right:14px;top:14px;width:38px;height:38px;border-radius:50%;border:1px solid #ffffff55;background:#07121a99;color:white;font-size:23px;cursor:pointer}.tp-head{max-width:670px}.tp-head h2{font-size:clamp(28px,5vw,48px);letter-spacing:.12em;text-transform:uppercase;margin:0 0 13px;text-shadow:0 3px 18px #000}.tp-actions{display:flex;flex-wrap:wrap;gap:9px}.tp-content{padding:18px 24px 26px}.tp-facts{display:grid;grid-template-columns:minmax(0,1.3fr) minmax(230px,.8fr);gap:22px;padding:17px;border:1px solid #ffffff25;border-radius:14px;background:rgba(255,255,255,.055);backdrop-filter:blur(16px)}.tp-meta{display:flex;flex-wrap:wrap;gap:9px 13px;font-size:12px;color:#d7e1e8;margin-bottom:12px}.tp-syn{font-size:13px;line-height:1.65;color:#e0e8ed;margin:10px 0 0}.tp-cast-label{font-size:11px;color:#b8c7d1;margin-bottom:10px}.tp-cast{display:flex;gap:7px;flex-wrap:wrap}.tp-cast a{width:40px;height:40px;border-radius:50%;overflow:hidden;border:1px solid #ffffff55;background:#172a34}.tp-cast img{width:100%;height:100%;object-fit:cover}.tp-section{margin-top:22px}.tp-section h3{font-size:15px;margin:0 0 11px}.tp-reviews{display:grid;grid-template-columns:repeat(auto-fit,minmax(170px,1fr));gap:10px}.tp-review{padding:13px;border:1px solid #ffffff20;border-radius:12px;background:#ffffff0b;min-width:0}.tp-review b{font-size:12px}.tp-review p{font-size:11px;line-height:1.5;color:#d5e0e7;margin:8px 0 0;display:-webkit-box;-webkit-line-clamp:3;-webkit-box-orient:vertical;overflow:hidden}.tp-related{display:grid;grid-auto-flow:column;grid-auto-columns:minmax(125px,1fr);gap:10px;overflow-x:auto;padding-bottom:6px}.tp-related button{border:0;background:transparent;color:white;text-align:left;cursor:pointer;padding:0}.tp-related img{width:100%;aspect-ratio:2/3;object-fit:cover;border-radius:8px;background:#1a2630}.tp-related small{display:block;margin-top:5px;font-size:11px}.tp-loading p{color:var(--muted)}@media(max-width:650px){.tp-hero{min-height:245px;padding:20px}.tp-content{padding:14px}.tp-facts{grid-template-columns:1fr}.tp-cast-side{border-top:1px solid #ffffff20;padding-top:13px}}
+      </style>`, async back => {
+      let t;
+      try { t = await detail(key); } catch { t = cached; }
+      if (!back.isConnected || !t) return;
+      const image = t.backdrop || t.posterLg || t.poster || "";
+      const cast = (t.castFull || []).slice(0, 6);
+      const reviews = (t.reviews || []).slice(0, 3);
+      const related = (t.similar || []).map(k => items.get(k)).filter(Boolean).slice(0, 10);
+      const saved = state.isSaved(t.key);
+      const watch = LIVE && t.tmdbId ? `#/watch/${esc(t.key)}${t.kind === "tv" ? `?season=${t.seasons?.[0]?.n || 1}&episode=1` : ""}` : "";
+      back.querySelector(".modal").innerHTML = `
+        <section class="tp-hero" style="${image ? `background-image:url('${esc(image)}')` : ""}">
+          <button class="tp-close" data-close aria-label="Close preview">×</button>
+          <div class="tp-head"><p class="eyebrow">${esc(typeLabel(t))}${t.year ? ` · ${t.year}` : ""}</p><h2>${esc(t.title)}</h2>
+            <div class="tp-actions">${watch ? `<a class="btn btn-light" href="#/${watch.replace(/^#\//, "")}">${icons.play} Play</a>` : ""}
+              <a class="btn btn-ghost tp-more-info" data-preview-more href="#/title/${esc(t.key)}">More info ${icons.ext}</a>
+              <button class="btn btn-ghost" data-save="${esc(t.key)}">${saved ? icons.check + " On My List" : icons.plus + " My List"}</button>
+            </div>
+          </div>
+        </section>
+        <div class="tp-content">
+          <div class="tp-facts"><div><div class="tp-meta"><span>${match(t)}% Match</span>${t.year ? `<span>${t.year}</span>` : ""}${t.runtime ? `<span>${esc(t.runtime)}</span>` : ""}${t.genres?.length ? `<span>${esc(t.genres.slice(0,3).join(" · "))}</span>` : ""}${t.vote ? `<span>★ ${t.vote.toFixed(1)}</span>` : ""}</div>
+            ${scoreChips(t)}<p class="tp-syn">${esc(t.synopsis || "No description available yet.")}</p></div>
+            ${cast.length ? `<div class="tp-cast-side"><div class="tp-cast-label">Cast${t.castNames?.length ? ` · ${esc(t.castNames.slice(0,3).join(", "))}` : ""}</div><div class="tp-cast">${cast.map(c => `<a href="#/search?q=${slug(c.name)}" title="${esc(c.name)}">${c.photo ? `<img src="${esc(c.photo)}" alt="${esc(c.name)}" loading="lazy">` : ""}</a>`).join("")}</div></div>` : ""}
+          </div>
+          ${reviews.length ? `<section class="tp-section"><h3>Reviews</h3><div class="tp-reviews">${reviews.map(r => `<article class="tp-review"><b>${esc(r.author || "Viewer")}${r.rating ? ` · ★ ${r.rating}/10` : ""}</b><p>${esc(r.content || "")}</p></article>`).join("")}</div></section>` : ""}
+          ${related.length ? `<section class="tp-section"><h3>You Might Also Like</h3><div class="tp-related">${related.map(x => `<button type="button" data-preview="${esc(x.key)}">${x.poster ? `<img src="${esc(x.poster)}" alt="${esc(x.title)}" loading="lazy">` : `<div class="art" style="aspect-ratio:2/3"></div>`}<small>${esc(x.title)}</small></button>`).join("")}</div></section>` : ""}
+        </div>`;
+    }, "title-preview-modal");
   }
 
   async function pageTitle(key) {
@@ -1264,19 +1306,48 @@
 
   // Account
   const REGIONS = [["US", "United States"], ["GB", "United Kingdom"], ["CA", "Canada"], ["AU", "Australia"], ["IE", "Ireland"], ["NZ", "New Zealand"], ["DE", "Germany"], ["FR", "France"], ["ES", "Spain"], ["IT", "Italy"], ["NL", "Netherlands"], ["SE", "Sweden"], ["IN", "India"], ["NG", "Nigeria"], ["ZA", "South Africa"], ["JP", "Japan"], ["KR", "South Korea"], ["BR", "Brazil"], ["MX", "Mexico"]];
+  function exportVesperaBackup() {
+    const payload = {
+      app: "Vespera", version: 1, exportedAt: new Date().toISOString(),
+      data: {
+        profiles: store.get("profiles", []), current: store.get("current", null), lists: store.get("lists", {}),
+        perf: store.get("perf", false), autoplay: store.get("autoplay", true), region: store.get("region", CFG.region || "US"),
+        lang: store.get("lang", "English"), watchProgress: readWatchProgress()
+      }
+    };
+    const blob = new Blob([JSON.stringify(payload, null, 2)], { type: "application/json" });
+    const url = URL.createObjectURL(blob); const a = document.createElement("a");
+    a.href = url; a.download = `vespera-backup-${new Date().toISOString().slice(0,10)}.json`;
+    document.body.appendChild(a); a.click(); a.remove(); setTimeout(() => URL.revokeObjectURL(url), 1000);
+    toast("Vespera backup exported");
+  }
+  function importVesperaBackup(file) {
+    const reader = new FileReader();
+    reader.onload = () => {
+      try {
+        const payload = JSON.parse(String(reader.result || "")); const d = payload?.data;
+        if (payload?.app !== "Vespera" || !d || !Array.isArray(d.profiles) || !d.lists || typeof d.lists !== "object") throw new Error("invalid backup");
+        modal(`<h2>Import Vespera backup?</h2><p>This replaces the profiles, lists, settings and watch progress currently saved in this browser.</p><p class="fine">Backup date: ${esc(payload.exportedAt ? fmtDate(payload.exportedAt.slice(0,10)) : "Unknown")}</p><div class="modal-actions"><button class="btn btn-ghost" data-close>Cancel</button><button class="btn btn-primary" id="confirmBackupImport">Import backup</button></div>`, (back, close) => {
+          back.querySelector("#confirmBackupImport").onclick = () => {
+            hydrating = true;
+            try {
+              ["profiles", "current", "lists", "perf", "autoplay", "region", "lang"].forEach(k => { if (d[k] !== undefined) localStorage.setItem("vespera." + k, JSON.stringify(d[k])); });
+              localStorage.setItem(WATCH_PROGRESS_KEY, JSON.stringify(Array.isArray(d.watchProgress) ? d.watchProgress : []));
+            } finally { hydrating = false; }
+            ensureGuestProfile(); close(); toast("Backup imported"); render();
+          };
+        });
+      } catch { toast("That file isn't a valid Vespera backup"); }
+    };
+    reader.onerror = () => toast("Couldn't read that backup file");
+    reader.readAsText(file);
+  }
+
   function pageAccount() {
-    const a = state.auth || {};
-    const since = a.since ? new Date(a.since).toLocaleDateString(undefined, { month: "long", year: "numeric" }) : "—";
     const tog = (act, on, label, hint) => `<button class="pref" data-action="${act}" role="switch" aria-checked="${on}"><span><b>${label}</b><small>${hint}</small></span><span class="switch ${on ? "on" : ""}"></span></button>`;
     return `<div class="page account">
-      <div class="page-head"><div><h1>Account</h1><p>Membership, profiles and preferences.</p></div></div>
+      <div class="page-head"><div><h1>Settings</h1><p>Profiles, preferences and your Vespera data.</p></div></div>
       <div class="acct-grid">
-        <section class="panel"><h2>Membership</h2>
-          <div class="acct-row"><span>Email</span><b>${esc(a.email)}</b></div>
-          <div class="acct-row"><span>Membership</span><b>Invited member</b></div>
-          <div class="acct-row"><span>Member since</span><b>${esc(since)}</b></div>
-          <div class="acct-row"><span>Catalog</span><b>${LIVE ? "Live · TMDB" + (FEAT.omdb ? " + OMDb" : "") : "Sample"}</b></div>
-        </section>
         <section class="panel"><h2>Profiles</h2>
           <div class="acct-profiles">${state.profiles.map(p => `<button class="who-mini ${p.id === state.currentId ? "on" : ""}" data-switch="${p.id}">${avatar(p)}<span>${esc(p.name)}</span></button>`).join("")}
             ${state.profiles.length < 5 ? `<button class="who-mini" data-action="add-profile"><span class="add-av">+</span><span>Add</span></button>` : ""}</div>
@@ -1289,16 +1360,21 @@
           ${tog("autoplay", state.autoplay, "Autoplay trailers", "Play muted trailers in heroes.")}
           ${tog("perf", state.perf, "Performance mode", "Fewer animations, no background video.")}
         </section>
-        <section class="panel"><h2>Your data</h2>
-          <p class="fine" style="padding:0;margin:0 0 14px">${SERVER ? "Profiles, lists and preferences are saved to your account and sync across your devices." : "Profiles, lists and preferences are stored in this browser."}</p>
-          <div class="hero-actions"><button class="btn btn-ghost" data-action="clear-list">Clear ${esc(state.current?.name)}'s list</button>
-          <button class="btn btn-ghost" data-action="signout">${icons.out} Sign out</button></div>
+        <section class="panel"><h2>Move Vespera between devices</h2>
+          <p class="fine" style="padding:0;margin:0 0 14px">No account or sign-up required. Export a Vespera backup on this device, then import that file on another device to transfer profiles, My Lists, settings and Continue Watching progress.</p>
+          <div class="hero-actions"><button class="btn btn-primary" data-action="backup-export">${icons.ext} Export backup</button>
+            <button class="btn btn-ghost" data-action="backup-import">Import backup</button></div>
+          <input id="backupFile" type="file" accept="application/json,.json" hidden>
+          <p class="fine" style="margin-top:12px">Backups are stored wherever you save the file. Importing replaces the Vespera data on this device.</p>
+        </section>
+        <section class="panel"><h2>Your data</h2><p class="fine" style="padding:0;margin:0 0 14px">Your profiles, lists and viewing progress are stored locally in this browser unless you export a backup.</p>
+          <button class="btn btn-ghost" data-action="clear-list">Clear ${esc(state.current?.name || "current profile")}’s list</button>
         </section>
       </div></div>`;
   }
 
   // ---------- gate / sign-in / profiles ----------
-  const brandHTML = `<a class="brand" href="#/welcome" aria-label="Vespera"><img src="vespera-logo-minimal.png" alt="Vespera" style="width:190px;height:50px;object-fit:contain;display:block"></a>`;
+  const brandHTML = `<a class="brand" href="#/" aria-label="Vespera"><img src="vespera-logo-minimal.png" alt="Vespera" style="width:190px;height:50px;object-fit:contain;display:block"></a>`;
   const langSel = () => `<select class="lang" id="lang" aria-label="Language">${["English", "Español", "Français", "Deutsch", "日本語"].map(l => `<option ${store.get("lang", "English") === l ? "selected" : ""}>${l}</option>`).join("")}</select>`;
   const legal = `<p class="legal">By continuing you agree to the Vespera <a href="#" data-action="privacy">Privacy Policy</a>.</p>`;
 
@@ -1406,7 +1482,7 @@
   function aiRender() {
     const log = document.getElementById("aiLog"); if (!log) return;
     const pickCard = p => { const t = items.get(p.key); if (!t) return "";
-      return `<div class="ai-pick" data-go="#/title/${esc(t.key)}" role="link" tabindex="0">
+      return `<div class="ai-pick" data-preview="${esc(t.key)}" role="button" tabindex="0">
         <span class="ai-thumb">${posterHTML(t)}</span>
         <span class="ai-pick-body"><b>${esc(t.title)}</b><small>${esc(typeLabel(t))}${t.year ? " · " + t.year : ""}${t.vote ? ` · ★ ${t.vote.toFixed(1)}` : ""}</small><em>${esc(p.why)}</em></span>
         <button class="icon-btn" data-save="${esc(t.key)}" aria-label="Add to My List">${state.isSaved(t.key) ? icons.check : icons.plus}</button></div>`; };
@@ -1640,8 +1716,19 @@
     }, "avatar-modal");
   }
 
+  function ensureGuestProfile() {
+    let profiles = store.get("profiles", []);
+    if (!Array.isArray(profiles) || !profiles.length) {
+      const p = { id: "p" + Date.now().toString(36), name: "Guest", color: 0 };
+      profiles = [p]; store.set("profiles", profiles); store.set("current", p.id);
+    } else {
+      const current = store.get("current", null);
+      if (!profiles.some(p => p.id === current)) store.set("current", profiles[0].id);
+    }
+  }
+
   // ---------- router ----------
-  const PUBLIC = ["welcome", "signin"];
+  const PUBLIC = [];
   let renderSeq = 0;
   let watchProgressCleanup = null;
   async function render() {
@@ -1654,9 +1741,7 @@
     const parts = path.split("/").filter(Boolean).map(decodeURIComponent);
     const route = parts[0] || "";
 
-    if (!state.auth && !PUBLIC.includes(route)) { location.replace("#/welcome"); return; }
-    if (state.auth && PUBLIC.includes(route)) { location.replace("#/"); return; }
-    if (state.auth && route !== "who" && !state.current) { location.replace("#/who"); return; }
+    if (route === "welcome" || route === "signin") { location.replace("#/"); return; }
 
     const setTitle = s => document.title = s ? `${s} · Vespera` : "Vespera · Films & Series";
     if (route === "welcome") { $app.innerHTML = pageWelcome(); setTitle(); return mountPage(route, params); }
@@ -1706,7 +1791,19 @@
       if (document.getElementById("grid")) loadBrowse(false);
       else { const s = data.section(route); mountHero(() => data.load(s.hero), BROWSE[route].hero); }
     }
-    if (route === "constellations") liveColls(document.getElementById("collPage"));
+    if (route === "constellations") {
+      if (parts[1]) liveColls(document.getElementById("collPage"));
+      else {
+        mountHero(() => data.row({ path: "trending/all/week" }), "Across every universe");
+        const q = document.getElementById("constellationSearch");
+        if (q) q.addEventListener("input", () => {
+          const term = q.value.trim().toLowerCase();
+          document.querySelectorAll("#constellationShelves .section").forEach(section => {
+            section.hidden = !!term && !section.querySelector(".section-head h2")?.textContent.toLowerCase().includes(term);
+          });
+        });
+      }
+    }
     if (route === "clips") mountClips();
     if (route === "title") {
       const t = items.get(parts[1]);
@@ -1849,6 +1946,10 @@
 
   document.addEventListener("click", e => {
     const t = e.target;
+    const moreInfo = t.closest("[data-preview-more]");
+    if (moreInfo) { e.preventDefault(); moreInfo.closest(".modal-back")?.remove(); location.hash = moreInfo.getAttribute("href"); return; }
+    const preview = t.closest("[data-preview]");
+    if (preview && !t.closest("[data-save]")) { e.preventDefault(); e.stopPropagation(); preview.closest(".modal-back")?.remove(); openTitlePreview(preview.dataset.preview); return; }
     const save = t.closest("[data-save]");
     if (save) {
       e.preventDefault(); e.stopPropagation();
@@ -1885,19 +1986,10 @@
     if (act) {
       const a = act.dataset.action;
       if (a !== "jump") e.preventDefault();
-      if (a === "signout") {
-        closeMenus(); clearTimeout(syncTimer);
-        if (SERVER) api("auth/logout", "POST").catch(() => {}).finally(() => { signedOut(); toast("Signed out"); });
-        else { store.del("auth"); state.currentId = null; location.hash = "#/welcome"; toast("Signed out"); }
-      }
       if (a === "assistant") openAssistant();
       if (a === "ai-close") closeAssistant();
       if (a === "ai-clear") { aiMsgs = []; saveAi(); aiRender(); }
       if (a === "ask-ai") { const q = document.getElementById("q")?.value.trim(); openAssistant(q || ""); }
-      if (a === "resend") {
-        const email = new URLSearchParams(location.hash.split("?")[1]).get("email");
-        api("auth/start", "POST", { email }).then(() => toast("New code sent"), x => toast(SIGNIN_ERRORS[x.code] || "Couldn't send a code"));
-      }
       if (a === "add-profile") { closeMenus(); profileModal(null); }
       if (a === "perf") { state.perf = !state.perf; document.documentElement.classList.toggle("perf", state.perf);
         act.querySelector(".switch").classList.toggle("on", state.perf); act.setAttribute("aria-checked", state.perf);
@@ -1905,6 +1997,8 @@
         toast(state.perf ? "Performance mode on — motion reduced" : "Performance mode off"); }
       if (a === "autoplay") { state.autoplay = !state.autoplay; act.querySelector(".switch").classList.toggle("on", state.autoplay); act.setAttribute("aria-checked", state.autoplay);
         toast(state.autoplay ? "Trailers will autoplay (muted)" : "Trailer autoplay off"); }
+      if (a === "backup-export") exportVesperaBackup();
+      if (a === "backup-import") document.getElementById("backupFile")?.click();
       if (a === "clear-list") modal(`<h2>Clear ${esc(state.current?.name)}'s list?</h2><p>This removes every saved title from this profile. It can't be undone.</p>
         <div class="modal-actions"><button class="btn btn-ghost" data-close>Cancel</button><button class="btn btn-primary" id="confirmClear">Clear list</button></div>`,
         (el, close) => el.querySelector("#confirmClear").onclick = () => { state.clearList(); close(); toast("List cleared"); });
@@ -1981,8 +2075,7 @@
       if (a === "episode-ratings") {
         detail(act.dataset.key).then(title => { if (title?.tmdbId) openEpisodeRatings(title); }).catch(() => toast("Couldn't load series details"));
       }
-      if (a === "google") { if (SERVER && FEAT.google) location.href = "/api/auth/google"; else toast("Google sign-in isn't set up yet — use an email code"); }
-      if (a === "privacy") modal(`<h2>Privacy</h2><p>${SERVER ? "Vespera saves your email, profiles, list and preferences to your account so they follow you between devices. A sign-in cookie keeps you signed in for 30 days." : "Vespera keeps your profiles, list and preferences in this browser."} Title data and images come from TMDB${FEAT.omdb ? " and OMDb" : ""}; trailers are embedded from YouTube.</p><div class="modal-actions"><button class="btn btn-primary" data-close>Got it</button></div>`);
+      if (a === "privacy") modal(`<h2>Privacy</h2><p>Vespera stores your profiles, lists, settings and watch progress in this browser. Use Settings → Export backup to move them to another device. Title data and images come from TMDB${FEAT.omdb ? " and OMDb" : ""}; trailers are embedded from YouTube.</p><div class="modal-actions"><button class="btn btn-primary" data-close>Got it</button></div>`);
       if (a === "trailer") { document.querySelectorAll(".bg-video iframe").forEach(f => ytCmd(f, "pauseVideo"));
         modal(`<div class="video"><iframe src="${ytSrc(act.dataset.yt).replace("mute=1", "mute=0")}" title="Trailer" allow="autoplay; encrypted-media; picture-in-picture; fullscreen" allowfullscreen></iframe></div>`, null, "modal-video"); }
       if (a === "share") { const url = location.href.split("#")[0] + "#/title/" + act.dataset.id;
@@ -1995,12 +2088,13 @@
   });
 
   document.addEventListener("change", e => {
+    if (e.target?.id === "backupFile") { const file = e.target.files?.[0]; if (file) importVesperaBackup(file); e.target.value = ""; return; }
     const s = e.target.closest("[data-param]"); if (!s) return;
     setParam(s.dataset.param, s.value);
   });
   document.addEventListener("keydown", e => {
     if (e.key === "Escape") { closeMenus(); if (!document.querySelector(".modal-back")) closeAssistant(); }
-    if (e.key === "Enter" && e.target.matches(".card[data-go]")) location.hash = e.target.dataset.go;
+    if (e.key === "Enter" && e.target.matches("[data-preview]")) openTitlePreview(e.target.dataset.preview);
     if (e.target.matches("input, textarea, select")) return;
     if (e.key === "/" && state.current) { e.preventDefault(); location.hash = "#/search"; }
     if (document.getElementById("clips") && ["ArrowDown", "ArrowUp", "j", "k"].includes(e.key)) { e.preventDefault(); clipStep(e.key === "ArrowDown" || e.key === "j" ? 1 : -1); }
@@ -2009,11 +2103,12 @@
   addEventListener("hashchange", render);
 
   async function boot() {
-    if (SERVER) {
-      try { FEAT = { ...FEAT, ...(await api("features")) }; } catch {}
-      try { hydrate(await api("me")); }
-      catch (e) { if (e.status === 401) { hydrating = true; ["auth", "profiles", "lists", "current"].forEach(k => store.del(k)); hydrating = false; } }
-    }
+    // If this browser had an older signed-in Vespera session, pull its latest
+    // data once before switching to guest mode so existing records are retained.
+    if (SERVER && store.get("auth", null)) { try { hydrate(await api("me")); } catch {} }
+    try { localStorage.removeItem("vespera.auth"); } catch {}
+    ensureGuestProfile();
+    if (SERVER) { try { FEAT = { ...FEAT, ...(await api("features")) }; } catch {} }
     render();
   }
   boot();
