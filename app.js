@@ -15,10 +15,10 @@
   const CFG = window.VESPERA_CONFIG || {};
   // Vespera brand assets (place both PNG files beside the app entry page).
   const brandFavicon = document.querySelector('link[rel~="icon"]') || document.createElement("link");
-  brandFavicon.rel = "icon"; brandFavicon.type = "image/png"; brandFavicon.href = "vespera-favicon.png";
+  brandFavicon.rel = "icon"; brandFavicon.type = "image/png"; brandFavicon.href = "vespera-icon-minimal.png";
   if (!brandFavicon.parentNode) document.head.appendChild(brandFavicon);
   const appleIcon = document.querySelector('link[rel="apple-touch-icon"]') || document.createElement("link");
-  appleIcon.rel = "apple-touch-icon"; appleIcon.href = "vespera-favicon.png";
+  appleIcon.rel = "apple-touch-icon"; appleIcon.href = "vespera-icon-minimal.png";
   if (!appleIcon.parentNode) document.head.appendChild(appleIcon);
   // Only an explicit true enables server mode. The documented "auto" value
   // must fall back to static mode so TMDB uses the public config key.
@@ -699,7 +699,7 @@
     return `
     <header class="topbar" id="topbar">
       <button class="icon-btn menu-toggle" id="menuToggle" aria-label="Open menu" aria-expanded="false">${icons.menu}</button>
-      <a class="brand" href="#/" aria-label="Vespera home"><img src="vespera-logo.png" alt="Vespera" style="width:150px;height:52px;object-fit:contain"></a>
+      <a class="brand" href="#/" aria-label="Vespera home"><img src="vespera-logo-minimal.png" alt="Vespera" style="width:150px;height:40px;object-fit:contain;display:block"></a>
       <nav class="nav" id="nav" aria-label="Main">
         ${NAV.map(([h, l]) => `<a href="${h}" class="${active(h)}">${l}</a>`).join("")}
         <a href="#/search" class="nav-search ${active("#/search")}" aria-label="Search">${icons.search}</a>
@@ -724,7 +724,7 @@
     </header>
     <main id="main" class="route-${route || "home"}">${inner}</main>
     ${route === "clips" ? "" : `<footer>
-      <a class="brand" href="#/" aria-label="Vespera"><img src="vespera-favicon.png" alt="" style="width:22px;height:22px;object-fit:contain"><span style="font-size:18px">Vespera</span></a>
+      <a class="brand" href="#/" aria-label="Vespera"><img src="vespera-icon-minimal.png" alt="" style="width:22px;height:22px;object-fit:contain"><span style="font-size:18px">Vespera</span></a>
       <nav><a href="#/search">Search</a><a href="#/pairings">Pairings</a><a href="#/constellations">Constellations</a><a href="#/account">Account</a><a href="#" data-action="privacy">Privacy</a></nav>
       <span>${LIVE ? `Data &amp; images from <a href="https://www.themoviedb.org" target="_blank" rel="noopener">TMDB</a>. This product uses the TMDB API but is not endorsed or certified by TMDB.` : "Sample catalog · add a TMDB key in config.js for live data."} Vespera doesn't host or stream video.</span>
     </footer>`}
@@ -1292,7 +1292,7 @@
   }
 
   // ---------- gate / sign-in / profiles ----------
-  const brandHTML = `<a class="brand" href="#/welcome" aria-label="Vespera"><img src="vespera-logo.png" alt="Vespera" style="width:170px;height:60px;object-fit:contain"></a>`;
+  const brandHTML = `<a class="brand" href="#/welcome" aria-label="Vespera"><img src="vespera-logo-minimal.png" alt="Vespera" style="width:190px;height:50px;object-fit:contain;display:block"></a>`;
   const langSel = () => `<select class="lang" id="lang" aria-label="Language">${["English", "Español", "Français", "Deutsch", "日本語"].map(l => `<option ${store.get("lang", "English") === l ? "selected" : ""}>${l}</option>`).join("")}</select>`;
   const legal = `<p class="legal">By continuing you agree to the Vespera <a href="#" data-action="privacy">Privacy Policy</a>.</p>`;
 
