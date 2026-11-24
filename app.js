@@ -158,7 +158,7 @@
     it.byRole = kind === "movie" ? "Directed by" : "Created by";
     it.cast = (d.credits?.cast || []).slice(0, 4).map(c => c.name);
     it.castNames = (d.credits?.cast || []).slice(0, 10).map(c => c.name);
-    it.castFull = (d.credits?.cast || []).slice(0, 14).map(c => ({ name: c.name, role: c.character, photo: c.profile_path ? IMG + "w185" + c.profile_path : null }));
+    it.castFull = (d.credits?.cast || []).slice(0, 14).map(c => ({ id: c.id, name: c.name, role: c.character, photo: c.profile_path ? IMG + "w185" + c.profile_path : null }));
     it.network = kind === "tv" ? (d.networks || []).slice(0, 2).map(n => n.name).join(" / ") : (d.production_companies || []).slice(0, 2).map(c => c.name).join(" / ");
     it.networkIds = kind === "tv" ? (d.networks || []).map(n => ({ id: n.id, name: n.name })) : [];
     it.runtime = kind === "movie" ? (d.runtime ? `${Math.floor(d.runtime / 60)}h ${d.runtime % 60}m` : "") : (d.number_of_seasons ? `${d.number_of_seasons} season${d.number_of_seasons > 1 ? "s" : ""}` : "");
@@ -199,6 +199,56 @@
 
   // ---------- data API (same calls in both modes) ----------
   const uniq = list => { const seen = new Set(); return list.filter(x => x && !seen.has(x.key) && seen.add(x.key)); };
+
+  // ---------- people (actors, directors) ----------
+  // "Lupita Nyong'o" and "lupita nyongo" compare equal; accents are ignored.
+  const normName = s => String(s || "").toLowerCase().normalize("NFKD").replace(/[̀-ͯ]/g, "").replace(/['’`.]/g, "").replace(/[^a-z0-9]+/g, " ").trim();
+  const peopleJobs = new Map();
+  // People whose name contains every word typed (best known first), or TMDB's top hit if it shares a word.
+  function findPeople(q) {
+    const key = normName(q);
+    if (!peopleJobs.has(key)) peopleJobs.set(key, tmdb("search/person", { query: q }).then(j => {
+      const words = key.split(" ").filter(Boolean);
+      const res = (j.results || []).filter(p => p.profile_path || (p.known_for || []).length);
+      const full = res.filter(p => { const n = normName(p.name); return words.every(w => n.includes(w)); });
+      const list = full.length ? full : res.slice(0, 1).filter(p => words.some(w => w.length > 2 && normName(p.name).includes(w)));
+      return list.slice(0, 8).map(p => ({ id: p.id, name: p.name, photo: p.profile_path ? IMG + "w185" + p.profile_path : null,
+        dept: p.known_for_department || "", pop: p.popularity || 0, exact: normName(p.name) === key,
+        kfVotes: Math.max(0, ...(p.known_for || []).map(k => k.vote_count || 0)), // how well known their best work is
+        knownFor: (p.known_for || []).map(k => k.title || k.name).filter(Boolean).slice(0, 2) }));
+    }).catch(e => { peopleJobs.delete(key); throw e; }));
+    return peopleJobs.get(key);
+  }
+  const filmJobs = new Map();
+  // A person's full filmography, biggest parts first.
+  function personFilmography(id) {
+    if (!filmJobs.has(id)) filmJobs.set(id, tmdb(`person/${id}/combined_credits`).then(c => {
+      const skipGenres = [10763, 10764, 10767]; // news, reality, talk shows
+      const self = r => /^(self|himself|herself|themselves|narrator \(voice\)|host)\b/i.test(r || "");
+      const score = new Map();
+      const add = (x, weight) => {
+        if ((x.genre_ids || []).some(g => skipGenres.includes(g))) return;
+        const it = fromTmdb(x); if (!it || (!it.poster && (it.votes || 0) < 3)) return;
+        const base = Math.log10((x.vote_count || 0) + 1) * 70 + Math.min(x.popularity || 0, 200) / 4 + 10;
+        score.set(it.key, Math.max(score.get(it.key) || 0, base * weight));
+      };
+      // How much of a series someone was in: main cast (20+ episodes) counts fully, a guest spot hardly at all.
+      const tvShare = n => (n = n || 1) >= 20 ? 1 : n >= 8 ? .75 : n >= 3 ? .45 : .25;
+      (c.cast || []).forEach(x => {
+        if (self(x.character)) return;
+        // Lead roles count fully; small parts and one-off TV guest spots count less.
+        const w = x.media_type === "movie" ? (x.order == null ? .7 : x.order <= 3 ? 1 : x.order <= 8 ? .8 : .5) : tvShare(x.episode_count);
+        add(x, w);
+      });
+      (c.crew || []).forEach(x => {
+        let w = x.job === "Director" || x.job === "Creator" ? 1 : ["Writer", "Screenplay", "Novel", "Story"].includes(x.job) ? .8 : x.job === "Executive Producer" || x.job === "Producer" ? .35 : 0;
+        if (x.media_type === "tv" && x.job !== "Creator") w *= tvShare(x.episode_count); // directing one episode isn't their show
+        if (w) add(x, w);
+      });
+      return [...score.entries()].sort((a, b) => b[1] - a[1]).map(([k]) => items.get(k)).filter(Boolean);
+    }).catch(e => { filmJobs.delete(id); throw e; }));
+    return filmJobs.get(id);
+  }
   const localOf = type => TITLES.filter(t => t.type === type).map(t => items.get(t.id));
   const shuffleBy = (l, seed) => [...l].sort((a, b) => hash(a.key + seed) - hash(b.key + seed));
   const data = {
@@ -287,19 +337,41 @@
         .filter(t => t.poster || (t.votes || 0) >= 5) // drop near-empty entries
         .sort((a, b) => rank(b) - rank(a));
 
+      // People: a matching actor or director brings their whole filmography, 40 titles per page.
+      const PER = 40;
+      let people = [], person = null, credits = [];
+      if (!yr && nq.length >= 3) {
+        people = await findPeople(q).catch(() => []);
+        // Lead with a person when the words typed are their name (all words match), not just part of a title.
+        const words = normName(q).split(" ");
+        const real = people.filter(p => p.kfVotes >= 20); // ignore profiles with no real body of work
+        const famousTitle = titles.some(t => titleScore(t) === 3 && (t.votes || 0) > 1000);
+        // One common first name ("tom") that fits several well-known people is ambiguous — show the People row instead.
+        const nameFits = real.filter(p => normName(p.name).split(" ").includes(words[0]) && p.kfVotes >= 2000
+          && ["Acting", "Directing", "Writing"].includes(p.dept) && p.pop >= 1).sort((a, b) => b.pop - a.pop);
+        // A clear favourite: far more popular than anyone else with that name (Keanu Reeves vs other Keanus; not the many Toms).
+        const clearFavourite = nameFits.length && (nameFits.length === 1 || nameFits[0].pop >= 3 * nameFits[1].pop) ? nameFits[0] : null;
+        person = real.find(p => p.exact && (p.kfVotes >= 200 || !famousTitle))
+          // several words typed and they're all in the name ("denzel washington", "lupita nyongo")
+          || (words.length > 1 && real[0] ? real[0] : null)
+          // one word that is a whole first/last name of one well-known person ("keanu", "zendaya")
+          || (words.length === 1 ? clearFavourite : null);
+        // Only show the People row when it's likely what was meant.
+        people = people.filter(p => p === person || (p.exact && p.kfVotes >= 20)
+          || (["Acting", "Directing", "Writing"].includes(p.dept) && p.pop >= 1 && p.kfVotes >= 300));
+        if (person) credits = await personFilmography(person.id).catch(() => []);
+      }
+      const creditPage = credits.slice((page - 1) * PER, page * PER);
+      const moreCredits = credits.length > page * PER;
+
       let lead = [], tail = [];
+      if (creditPage.length) {
+        // e.g. "keanu": the well-known film called exactly that, then Keanu Reeves' work, then everything else.
+        const famousExact = page === 1 ? titles.filter(t => titleScore(t) === 3 && (t.votes || 0) > 1000) : [];
+        lead = [...famousExact, ...creditPage];
+      }
       if (page === 1 && !yr) {
-        const [people, related] = await Promise.all([
-          // A matching actor or director → their best-known work.
-          tmdb("search/person", { query: q }).then(async j => {
-            const p = (j.results || []).sort((a, b) => (b.popularity || 0) - (a.popularity || 0))[0];
-            if (!p || (p.popularity || 0) < 2 || norm(p.name).indexOf(nq) < 0) return { list: [], strong: false };
-            const c = await tmdb(`person/${p.id}/combined_credits`);
-            const credits = [...(c.cast || []), ...(c.crew || []).filter(x => ["Director", "Creator", "Writer", "Screenplay", "Novel"].includes(x.job))]
-              .filter(x => (x.vote_count || 0) > 30 && !(x.genre_ids || []).some(g => g === 10763 || g === 10767)) // skip news & talk shows
-              .sort((a, b) => (b.vote_count || 0) - (a.vote_count || 0));
-            return { list: uniq(credits.map(x => fromTmdb(x)).filter(Boolean)).slice(0, 24), strong: norm(p.name) === nq || p.popularity > 8 };
-          }).catch(() => ({ list: [], strong: false })),
+        const [related] = await Promise.all([
           // A theme like "heist" or "time travel" → popular titles tagged with it.
           tmdb("search/keyword", { query: q }).then(async j => {
             const exact = (j.results || []).find(k => norm(k.name) === nq);
@@ -311,16 +383,15 @@
             return { list: out, exact: !!exact };
           }).catch(() => ({ list: [], exact: false })),
         ]);
-        const strongTitle = titles.some(t => titleScore(t) >= 2 && (t.votes || 0) > 200);
-        if (people.list.length && people.strong && !strongTitle) lead = people.list; else tail.push(...people.list);
-        if (related.exact && related.list.length) {
+        if (related.exact && related.list.length && !person) {
           // A theme search ("heist", "time travel"): best-known matches by name, then the best titles about it.
           const famous = titles.filter(t => (t.votes || 0) > 300).slice(0, 4);
           lead = [...lead, ...famous, ...related.list.slice(0, 16)];
           tail.push(...related.list.slice(16));
         } else tail.push(...related.list);
       }
-      return { list: refine(uniq([...lead, ...titles, ...tail])), more };
+      // When the search is clearly a person, their films come first and name-matching titles follow.
+      return { list: refine(uniq([...lead, ...titles, ...tail])), more: more || moreCredits, people: page === 1 ? people : [], person };
     },
     // Filters only (no words typed): browse TMDB with the chosen filters.
     async discoverSearch({ type, genre, year, rating, sort }, page = 1) {
@@ -1073,17 +1144,24 @@
     res.innerHTML = `<div class="grid">${Array.from({ length: 12 }, () => `<div class="card skel"></div>`).join("")}</div>`;
     try {
       const st = { f, page: 1, seen: new Set(), seq };
-      let { list, more } = await data.search(f, 1);
+      let { list, more, people = [], person } = await data.search(f, 1);
       // A narrow tab (e.g. Anime) can filter a page down to nothing — look one page further before giving up.
       while (!list.length && more && st.page < 3) { st.page++; ({ list, more } = await data.search(f, st.page)); }
       if (seq !== searchSeq) return;
       list = list.filter(x => !st.seen.has(x.key) && st.seen.add(x.key));
       searchState = { ...st, more };
+      const peopleRow = people.length ? `<section class="people-strip" aria-label="People">
+          <h2 class="sub-h">People</h2>
+          <div class="people-row">${people.map(p => `<a class="person-chip ${person && person.id === p.id ? "on" : ""}" href="#/person/${p.id}">
+            <span class="person-ph">${p.photo ? `<img src="${esc(p.photo)}" alt="" loading="lazy">` : esc(p.name[0])}</span>
+            <span><b>${esc(p.name)}</b><small>${esc([p.dept === "Acting" ? "Actor" : p.dept, ...p.knownFor].filter(Boolean).join(" · "))}</small></span></a>`).join("")}</div>
+        </section>` : "";
       res.innerHTML = list.length
-        ? `<p class="search-count" id="searchCount">${list.length}${more ? "+" : ""} result${list.length > 1 ? "s" : ""}</p>
+        ? `${peopleRow}${person ? `<h2 class="sub-h">${esc(person.name)}'s films &amp; series, then other matches</h2>` : ""}
+           <p class="search-count" id="searchCount">${list.length}${more ? "+" : ""} result${list.length > 1 ? "s" : ""}</p>
            <div class="grid" id="searchGrid">${list.map(card).join("")}</div>
            <div class="more-wrap"><button class="btn btn-ghost" id="searchMore" data-action="search-more" ${more ? "" : "hidden"}>Load more</button></div>`
-        : empty(f.q ? `Nothing for “${esc(f.q)}”` : "No matches", f.type ? "Try the All tab, check the spelling, or loosen a filter." : "Check the spelling, loosen a filter, or try a person or year.",
+        : peopleRow + empty(f.q ? `Nothing for “${esc(f.q)}”` : "No matches", f.type ? "Try the All tab, check the spelling, or loosen a filter." : "Check the spelling, loosen a filter, or try a person or year.",
           FEAT.assistant && f.q ? `<button class="btn btn-primary" data-action="ask-ai" style="margin-top:18px">${icons.spark} Ask the AI instead</button>` : "");
     } catch (err) { console.warn("Vespera search failed:", err); if (seq === searchSeq) res.innerHTML = failBox(); }
   }
@@ -1156,7 +1234,7 @@
             ${castNames.length ? `<p><span>Cast:</span> ${castNames.slice(0, 3).map(c => `<a href="#/search?q=${slug(c)}" data-close>${esc(c)}</a>`).join(", ")}${castNames.length > 3 ? `, <a href="#/title/${esc(t.key)}" data-preview-more>more</a>` : ""}</p>` : ""}
             ${(t.genres || []).length ? `<p><span>Genres:</span> ${t.genres.map(g => `<a href="#/genre/${slug(g)}" data-close>${esc(g)}</a>`).join(", ")}</p>` : ""}
             ${t.by ? `<p><span>${esc(t.byRole || "By")}:</span> ${esc(t.by)}</p>` : ""}
-            ${cast.length ? `<div class="pv-faces">${cast.map(c => `<a href="#/search?q=${slug(c.name)}" data-close title="${esc(c.name)}${c.role ? ` as ${esc(c.role)}` : ""}">${c.photo ? `<img src="${esc(c.photo)}" alt="${esc(c.name)}" loading="lazy">` : `<span>${esc(c.name[0])}</span>`}</a>`).join("")}</div>` : ""}
+            ${cast.length ? `<div class="pv-faces">${cast.map(c => `<a href="${c.id ? `#/person/${c.id}` : `#/search?q=${slug(c.name)}`}" data-close title="${esc(c.name)}${c.role ? ` as ${esc(c.role)}` : ""}">${c.photo ? `<img src="${esc(c.photo)}" alt="${esc(c.name)}" loading="lazy">` : `<span>${esc(c.name[0])}</span>`}</a>`).join("")}</div>` : ""}
           </div>
         </section>
         ${loading ? `<div class="pv-loading skel"></div>` : ""}
@@ -1193,6 +1271,36 @@
         }, 900);
       }
     }, "pv-modal");
+  }
+
+  // Person page: photo, bio and full filmography (40 at a time).
+  let personState = null;
+  async function pagePerson(id, params) {
+    if (!LIVE || !/^\d+$/.test(id || "")) return notFound();
+    const [p, all] = await Promise.all([tmdb(`person/${id}`), personFilmography(id)]);
+    const type = params.get("type") || "";
+    const list = all.filter(it => !type || (type === "anime" ? it.type === "anime" : it.kind === type));
+    personState = { list, shown: 40 };
+    const age = p.birthday ? Math.floor((new Date(p.deathday || Date.now()) - new Date(p.birthday)) / 31557600000) : null;
+    const facts = [p.known_for_department === "Acting" ? "Actor" : p.known_for_department,
+      p.birthday ? `Born ${fmtDate(p.birthday)}${!p.deathday && age ? ` (age ${age})` : ""}` : "", p.place_of_birth, p.deathday ? `Died ${fmtDate(p.deathday)}` : ""].filter(Boolean);
+    const tab = (v, l) => `<a class="pill pill-link ${type === v ? "on" : ""}" href="#/person/${id}${v ? `?type=${v}` : ""}">${l}</a>`;
+    return `<button class="back-link" data-action="back">${icons.left} Back</button>
+      <div class="page person-page" style="padding-top:0">
+        <header class="person-head">
+          <span class="person-photo">${p.profile_path ? `<img src="${IMG}w300${esc(p.profile_path)}" alt="${esc(p.name)}">` : esc((p.name || "?")[0])}</span>
+          <div>
+            <p class="eyebrow">Person</p>
+            <h1>${esc(p.name)}</h1>
+            ${facts.length ? `<p class="person-facts">${facts.map(esc).join(" · ")}</p>` : ""}
+            ${p.biography ? `<p class="person-bio clamp">${esc(p.biography)}</p>${p.biography.length > 320 ? `<button class="text-btn" data-action="expand-bio">Read more</button>` : ""}` : ""}
+          </div>
+        </header>
+        <div class="filters" style="margin-top:26px">${tab("", `All · ${all.length}`)}${tab("movie", "Movies")}${tab("tv", "Series")}${tab("anime", "Anime")}</div>
+        ${list.length ? `<div class="grid" id="personGrid">${list.slice(0, 40).map(card).join("")}</div>
+          <div class="more-wrap"><button class="btn btn-ghost" data-action="person-more" ${list.length > 40 ? "" : "hidden"}>Load more · ${Math.max(0, list.length - 40)} left</button></div>`
+          : empty("Nothing here", "Try another tab.")}
+      </div>`;
   }
 
   async function pageTitle(key) {
@@ -1265,7 +1373,7 @@
       <div class="episodes" id="epList"></div>
     </section>` : ""}
     ${t.castFull?.length ? `<section class="section"><div class="section-head"><h2>Cast</h2></div>
-      <div class="row cast-row">${t.castFull.map(c => `<a class="person" href="#/search?q=${slug(c.name)}">
+      <div class="row cast-row">${t.castFull.map(c => `<a class="person" href="${c.id ? `#/person/${c.id}` : `#/search?q=${slug(c.name)}`}">
         <span class="person-ph">${c.photo ? `<img src="${esc(c.photo)}" alt="" loading="lazy">` : esc(c.name[0])}</span><b>${esc(c.name)}</b><small>${esc(c.role || "")}</small></a>`).join("")}</div></section>` : ""}
     <section class="section"><div class="section-head"><h2>More details</h2></div>
       <dl class="details-grid">${detailRows.map(([k, v]) => `<div><dt>${esc(k)}</dt><dd>${v}</dd></div>`).join("")}</dl></section>
@@ -1875,6 +1983,7 @@
       case "search": inner = pageSearch(params); title = "Search"; break;
       case "account": inner = pageAccount(); title = "Account"; break;
       case "title": inner = pageTitle(parts[1]); break;
+      case "person": inner = pagePerson(parts[1], params); title = "People"; break;
       case "genre": inner = pageGenre(parts[1] || ""); title = parts[1]; break;
       case "network": inner = pageNetwork(parts[1] || ""); title = "Network"; break;
       default: inner = notFound();
@@ -1889,6 +1998,7 @@
       if (seq !== renderSeq) return;
       document.getElementById("main").innerHTML = html;
       if (route === "title") { const t = items.get(parts[1]); if (t) setTitle(t.title); }
+      if (route === "person") { const h = document.querySelector(".person-head h1"); if (h) setTitle(h.textContent); }
     }
     mountPage(route, params, parts);
   }
@@ -2072,6 +2182,12 @@
       if (a === "back") { history.length > 1 ? history.back() : (location.hash = "#/"); }
       if (a === "more" && browseState) { browseState.page++; loadBrowse(true); }
       if (a === "search-more") searchMore(act);
+      if (a === "person-more" && personState) {
+        const next = personState.list.slice(personState.shown, personState.shown + 40); personState.shown += next.length;
+        document.getElementById("personGrid")?.insertAdjacentHTML("beforeend", next.map(card).join(""));
+        const left = personState.list.length - personState.shown; act.hidden = left <= 0; act.textContent = `Load more · ${left} left`;
+      }
+      if (a === "expand-bio") { const p = act.previousElementSibling; p.classList.toggle("clamp"); act.textContent = p.classList.contains("clamp") ? "Read more" : "Show less"; }
       if (a === "expand-syn") { const p = act.parentElement.querySelector(".m-syn"); p.classList.toggle("clamp"); act.textContent = p.classList.contains("clamp") ? "Read more" : "Show less"; }
       if (a === "toggle-filters") { const p = document.getElementById("filtersPanel"); p.hidden = !p.hidden; act.setAttribute("aria-expanded", !p.hidden); }
       if (a === "clear-filters") { const p = new URLSearchParams(location.hash.split("?")[1] || ""); ["genre", "year", "rating", "sort"].forEach(k => p.delete(k));
