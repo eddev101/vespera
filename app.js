@@ -1,4 +1,4 @@
-/* Vespera — single-page front end with movie and TV playback.
+/* Vespera — single-page front end (details only; Vespera doesn't host or stream video).
    Data: live from TMDB (+ optional OMDb) when keys are set in config.js,
    otherwise the built-in sample catalog in data.js.
    Hash routes:
@@ -6,7 +6,7 @@
      #/  #/movies  #/series  #/anime   (add ?view=all for the full filterable grid)
      #/constellations  #/constellations/:id  #/clips  #/pairings  #/list
      #/search?q=&type=&genre=&year=&rating=&sort=
-     #/title/:key  #/watch/:key  #/network/:id  #/genre/:name
+     #/title/:key  #/network/:id  #/genre/:name
    Auth here is front-end only (localStorage) so the UI can be built and
    reviewed before a real backend is wired in. */
 (() => {
@@ -31,90 +31,6 @@
   const byId = Object.fromEntries(TITLES.map(t => [t.id, t]));
   const $app = document.getElementById("app");
   const IMG = "https://image.tmdb.org/t/p/";
-  const PLAYBACK_API = (CFG.playbackApi || "https://flixstar-api.onrender.com/api").replace(/\/$/, "");
-  const WATCH_PROGRESS_KEY = "vespera.watch-progress";
-  const WATCH_PROGRESS_MIN_SECONDS = 120;
-  function readWatchProgress() {
-    try { const value = JSON.parse(localStorage.getItem(WATCH_PROGRESS_KEY) || "[]"); return Array.isArray(value) ? value : []; }
-    catch { return []; }
-  }
-  function progressKey(item) { return `${item.type}-${item.id}-${item.season || 0}-${item.episode || 0}`; }
-  function saveWatchProgress(item) {
-    const next = readWatchProgress().filter(x => progressKey(x) !== progressKey(item));
-    next.push({ ...item, updatedAt: Date.now() });
-    try { localStorage.setItem(WATCH_PROGRESS_KEY, JSON.stringify(next)); } catch {}
-    window.dispatchEvent(new Event("vespera-watch-progress"));
-  }
-  function removeWatchProgress(item) {
-    const next = readWatchProgress().filter(x => progressKey(x) !== progressKey(item));
-    try { localStorage.setItem(WATCH_PROGRESS_KEY, JSON.stringify(next)); } catch {}
-    window.dispatchEvent(new Event("vespera-watch-progress"));
-  }
-  function formatWatchTime(seconds) {
-    const total = Math.max(0, Math.floor(Number(seconds) || 0));
-    const h = Math.floor(total / 3600), m = Math.floor((total % 3600) / 60), sec = total % 60;
-    return h ? `${h}:${String(m).padStart(2, "0")}:${String(sec).padStart(2, "0")}` : `${m}:${String(sec).padStart(2, "0")}`;
-  }
-  const RESUME_PARAMS = [
-    { match: /(^|\.)vidlink\.pro$/i, param: "startAt" },
-    { match: /(^|\.)vidfast\.(pro|net|vc)$/i, param: "startAt" },
-    { match: /(^|\.)videasy\.(net|to)$/i, param: "progress" },
-    { match: /(^|\.)vidplus\.to$/i, param: "progress" },
-  ];
-  function resumeParamFor(url) {
-    try { const host = new URL(url).hostname; return RESUME_PARAMS.find(x => x.match.test(host))?.param || null; }
-    catch { return null; }
-  }
-  function isFrameXTVProvider(id, name = "") {
-    return `${id || ""} ${name || ""}`.toLowerCase().replace(/[^a-z0-9]/g, "").includes("framextv");
-  }
-  function withResume(url, seconds) {
-    const param = resumeParamFor(url);
-    if (!param || !seconds) return url;
-    try { const u = new URL(url); u.searchParams.set(param, String(Math.floor(seconds))); return u.toString(); }
-    catch { return url; }
-  }
-  function findSavedProgress(type, id, season, episode) {
-    return readWatchProgress().find(x => String(x.id) === String(id) && x.type === type &&
-      (type !== "tv" || (Number(x.season) === Number(season) && Number(x.episode) === Number(episode)))) || null;
-  }
-  function continueWatchingSection() {
-    const items = readWatchProgress().filter(x => x?.id && x?.progress > 0 && x?.progress < .95)
-      .sort((a, b) => (b.updatedAt || 0) - (a.updatedAt || 0)).slice(0, 10);
-    if (!items.length) return "";
-    const cards = items.map(item => {
-      const pct = Math.min(100, Math.max(0, Number(item.progress || 0) * 100));
-      const remaining = Math.max(0, Number(item.duration || 0) - Number(item.timestamp || 0));
-      const key = item.key || `${item.type}-${item.id}`;
-      const query = item.type === "tv" ? `?season=${encodeURIComponent(item.season || 1)}&episode=${encodeURIComponent(item.episode || 1)}` : "";
-      const image = item.backdrop || item.poster || "";
-      return `<article class="cw-card">
-        <a class="cw-poster" href="#/watch/${esc(key)}${query}" aria-label="Continue watching ${esc(item.title || item.name || "title")}">
-          ${image ? `<img src="${esc(image)}" alt="${esc(item.title || item.name || "")}" loading="lazy">` : `<span class="cw-placeholder">VESPERA</span>`}
-          <span class="cw-play">${icons.play}</span><span class="cw-progress"><i style="width:${pct}%"></i></span>
-        </a>
-        <div class="cw-meta"><a href="#/watch/${esc(key)}${query}" class="cw-title">${esc(item.title || item.name || "Untitled")}</a>
-          ${item.type === "tv" ? `<span class="cw-episode">S${Number(item.season) || 1} E${Number(item.episode) || 1}</span>` : ""}
-          <span class="cw-time">${remaining > 0 ? `${formatWatchTime(remaining)} left` : `${Math.round(pct)}% watched`}</span>
-        </div>
-        <button class="cw-remove" data-action="continue-remove" data-progress-key="${esc(progressKey(item))}" aria-label="Remove ${esc(item.title || item.name || "title")}" title="Remove from Continue Watching">×</button>
-      </article>`;
-    }).join("");
-    return `<section class="section cw-section" id="continueWatching">
-      <div class="section-head"><h2>Continue Watching</h2><div class="cw-head-actions">
-        <button class="cw-manage" data-action="continue-manage" aria-pressed="false">Manage</button>
-        <button class="cw-clear" data-action="continue-clear" hidden>Clear all</button>
-      </div></div>
-      <div class="cw-row-wrap"><div class="cw-row">${cards}</div></div>
-    </section>
-    <style>
-      .cw-head-actions{display:flex;align-items:center;gap:8px}.cw-manage,.cw-clear{border:1px solid var(--line);background:var(--panel,var(--line));color:var(--muted);border-radius:999px;padding:7px 12px;font:inherit;font-size:12px;cursor:pointer}.cw-manage[aria-pressed="true"]{color:var(--text);border-color:var(--accent)}.cw-clear{color:var(--muted)}
-      .cw-row-wrap{overflow-x:auto;scrollbar-width:thin;padding:0 var(--gutter)}.cw-row{display:grid;grid-auto-flow:column;grid-auto-columns:minmax(210px,24%);gap:14px;min-width:0}
-      .cw-card{position:relative;min-width:0;border:1px solid var(--line);border-radius:12px;overflow:hidden;background:var(--panel)}.cw-poster{position:relative;display:block;aspect-ratio:16/9;background:var(--panel,var(--line));overflow:hidden}.cw-poster img{width:100%;height:100%;display:block;object-fit:cover;transition:transform .35s}.cw-card:hover .cw-poster img{transform:scale(1.04)}.cw-placeholder{height:100%;display:grid;place-items:center;color:var(--muted);font-size:12px;letter-spacing:.18em}.cw-play{position:absolute;inset:0;display:grid;place-items:center;color:white;background:linear-gradient(0deg,rgba(0,0,0,.34),rgba(0,0,0,.06));opacity:0;transition:opacity .2s}.cw-card:hover .cw-play{opacity:1}.cw-play svg{width:42px;height:42px;padding:11px;border-radius:50%;background:rgba(0,0,0,.62)}.cw-progress{position:absolute;bottom:0;left:0;right:0;height:4px;background:rgba(255,255,255,.28)}.cw-progress i{display:block;height:100%;background:var(--accent);box-shadow:0 0 8px color-mix(in srgb,var(--accent) 55%,transparent)}
-      .cw-meta{display:grid;grid-template-columns:1fr auto;gap:5px 8px;padding:10px 11px 11px}.cw-title{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:var(--text);font-weight:650;font-size:13px;text-decoration:none}.cw-episode{color:var(--muted);font-size:11px}.cw-time{grid-column:1/-1;color:var(--muted);font-size:11px}.cw-remove{display:none;position:absolute;top:8px;right:8px;width:27px;height:27px;border:1px solid rgba(255,255,255,.25);border-radius:50%;background:rgba(8,10,14,.82);color:#fff;font-size:20px;line-height:1;cursor:pointer}.cw-section.cw-managing .cw-remove{display:block}.cw-section.cw-managing .cw-poster{filter:saturate(.8)}
-      @media(max-width:700px){.cw-row{grid-auto-columns:minmax(190px,68%);gap:11px}.cw-title{font-size:12px}}
-    </style>`;
-  }
   const TODAY = new Date().toISOString().slice(0, 10);
 
   // ---------- storage (safe) ----------
@@ -814,7 +730,6 @@
     rows.splice(1, 0, asyncRow("Top 10 Today", null, async () => uniq(await data.row(top)), { rank: true }));
     return `
     ${heroShell()}
-    <div id="continueWatchingMount">${continueWatchingSection()}</div>
     ${mine.length ? row("Your List", mine.slice(0, 14), "#/list") : ""}
     ${rows.join("")}
     <section class="section" id="homeColls">
@@ -908,18 +823,75 @@
       ${list.length ? `<div class="grid">${list.map(card).join("")}</div>` : empty("Nothing here yet", "Try another network.")}</div>`;
   }
 
+  // ---------- Constellations: universe rows ----------
+  // Light lookup for runtime, title logo and trailer (no OMDb call, so it's cheap per card).
+  const liteJobs = new Map();
+  function lite(t) {
+    if (!LIVE || !t?.tmdbId || t.full || t.liteDone) return Promise.resolve(t);
+    if (!liteJobs.has(t.key)) liteJobs.set(t.key, tmdb(`${t.kind}/${t.tmdbId}`, { append_to_response: "images,videos", include_image_language: "en,null" }).then(d => {
+      if (t.kind === "movie") t.runtime = t.runtime || (d.runtime ? `${Math.floor(d.runtime / 60)}h ${d.runtime % 60}m` : "");
+      else t.runtime = t.runtime || (d.number_of_seasons ? `${d.number_of_seasons} season${d.number_of_seasons > 1 ? "s" : ""}` : "");
+      const logos = d.images?.logos || []; const logo = logos.find(l => l.iso_639_1 === "en") || logos[0];
+      if (!t.logo && logo) t.logo = IMG + "w500" + logo.file_path;
+      const vids = (d.videos?.results || []).filter(v => v.site === "YouTube");
+      t.trailer = t.trailer || (vids.find(v => v.type === "Trailer" && v.official) || vids.find(v => v.type === "Trailer") || vids.find(v => v.type === "Teaser"))?.key || null;
+      t.liteDone = true; return t;
+    }).catch(() => t));
+    return liteJobs.get(t.key);
+  }
+  function uniCard(t, big) {
+    return `<div class="uni-card ${big ? "big" : ""}" role="button" tabindex="0" data-preview="${esc(t.key)}" data-uni="${esc(t.key)}" aria-label="${esc(t.title)}">
+      <div class="uni-media">${wideHTML(t)}</div>
+      ${big ? "" : `<span class="uni-tab" ${t.runtime ? "" : "hidden"}>${esc(t.runtime || "")}</span>`}
+      <div class="uni-logo">${t.logo ? `<img src="${esc(t.logo)}" alt="${esc(t.title)}" loading="lazy">` : `<b>${esc(t.title)}</b>`}</div>
+      ${big ? `<div class="uni-actions">
+        <button class="btn btn-light" data-action="trailer" data-yt="${esc(t.trailer || "")}" ${t.trailer ? "" : "hidden"}>${icons.play} Trailer</button>
+        <a class="btn btn-ghost" data-preview-more href="#/title/${esc(t.key)}">${icons.info} More info</a></div>` : ""}
+    </div>`;
+  }
+  function uniRow(label, loader, { big = false, more = null } = {}) {
+    return lazy(`<section class="section uni-section" data-lazy><div class="section-head"><h2>${esc(label)}</h2>${more ? `<a href="${more}">See all</a>` : ""}</div>
+      <div class="row-wrap"><div class="row uni-row ${big ? "big" : ""}">${Array.from({ length: big ? 3 : 4 }, () => `<div class="uni-card ${big ? "big" : ""} skel"></div>`).join("")}</div></div></section>`, async el => {
+      const list = (await loader()).filter(t => !LIVE || t.backdrop).slice(0, 20);
+      if (!list.length) { el.remove(); return; }
+      el.querySelector(".row-wrap").innerHTML = `
+        <button class="row-arrow l" data-scroll="-1" aria-label="Scroll left">${icons.left}</button>
+        <div class="row uni-row ${big ? "big" : ""}">${list.map(t => uniCard(t, big)).join("")}</div>
+        <button class="row-arrow r" data-scroll="1" aria-label="Scroll right">${icons.right}</button>`;
+      // Fill in runtime tabs, title logos and trailers as they arrive.
+      list.forEach(t => lite(t).then(x => {
+        el.querySelectorAll(`[data-uni="${CSS.escape(x.key)}"]`).forEach(c => {
+          const tab = c.querySelector(".uni-tab"); if (tab && x.runtime) { tab.textContent = x.runtime; tab.hidden = false; }
+          const logo = c.querySelector(".uni-logo"); if (logo && x.logo && !logo.querySelector("img")) logo.innerHTML = `<img src="${esc(x.logo)}" alt="${esc(x.title)}" loading="lazy">`;
+          const tr = c.querySelector('[data-action="trailer"]'); if (tr && x.trailer) { tr.dataset.yt = x.trailer; tr.hidden = false; }
+        });
+      }));
+    });
+  }
+  // Hero: the newest film from a handful of big universes.
+  async function constellationHeroItems() {
+    if (!LIVE) return (await Promise.all(COLLS.slice(0, 5).map(c => data.collection(c).catch(() => [])))).map(l => l[0]).filter(Boolean);
+    const names = (window.VESPERA_FRANCHISES || []).slice(0, 12);
+    const lists = await Promise.all(names.map(n => data.franchise(n).then(f => f.list).catch(() => [])));
+    const picks = lists.map(l => l.filter(t => t.backdrop && (!t.date || t.date <= TODAY)).pop()).filter(Boolean);
+    return picks.sort((a, b) => (b.votes || 0) - (a.votes || 0)).slice(0, 5).sort(() => Math.random() - .5);
+  }
   function pageCollections() {
-    const curated = COLLS.map(c => asyncRow(c.name, `#/constellations/${c.id}`, async () => data.collection(c)));
+    const rows = [];
+    let n = 0;
     const names = LIVE && Array.isArray(window.VESPERA_FRANCHISES) ? window.VESPERA_FRANCHISES : [];
-    const franchises = names.map(n => asyncRow(n, null, async () => (await data.franchise(n)).list));
+    const curated = COLLS.map(c => () => uniRow(c.name, () => data.collection(c), { big: n++ % 3 === 1, more: `#/constellations/${c.id}` }));
+    // Big franchises first; a hand-picked constellation after every few of them.
+    names.forEach((name, i) => {
+      rows.push(uniRow(name, async () => (await data.franchise(name)).list, { big: n++ % 3 === 1 }));
+      if (i % 5 === 4 && curated.length) rows.push(curated.shift()());
+    });
+    curated.forEach(make => rows.push(make()));
     return `${heroShell()}
-      <div class="section-intro constellation-intro"><div><p class="eyebrow">Explore the multiverse</p><h1>Constellations</h1><p>Worlds, sagas and stories worth getting lost in.</p></div>
+      <div class="section-intro constellation-intro"><div><p class="eyebrow">Explore the multiverse</p><h1>Constellations</h1><p>Worlds, sagas and stories worth getting lost in — every film in order.</p></div>
         <div class="constellation-search"><span>${icons.search}</span><input id="constellationSearch" type="search" placeholder="Find a universe or franchise" aria-label="Search constellations"></div>
       </div>
-      <div id="constellationShelves">${curated.join("")}${franchises.length ? `<div class="section-intro franchise-heading"><div><h2>Franchises</h2><p>Explore every universe, film by film.</p></div></div>${franchises.join("")}` : ""}</div>
-      <style>
-        .constellation-intro{display:flex;align-items:end;justify-content:space-between;gap:24px;padding:32px var(--gutter) 12px}.constellation-intro h1{font-size:clamp(30px,4vw,48px);margin:4px 0}.constellation-intro p:not(.eyebrow){color:var(--muted);margin:0}.constellation-search{display:flex;align-items:center;gap:9px;width:min(340px,100%);padding:11px 14px;border:1px solid var(--line);border-radius:999px;background:var(--panel)}.constellation-search input{width:100%;min-width:0;border:0;outline:0;background:transparent;color:var(--text);font:inherit}.franchise-heading{padding:30px var(--gutter) 0}.franchise-heading h2{font-size:24px;margin:0 0 5px}.franchise-heading p{color:var(--muted);margin:0}@media(max-width:700px){.constellation-intro{align-items:stretch;flex-direction:column}.constellation-search{width:100%}}
-      </style>`;
+      <div id="constellationShelves">${rows.join("")}</div>`;
   }
   async function pageCollection(id) {
     const c = COLLS.find(x => x.id === id); if (!c) return notFound();
@@ -1054,41 +1026,92 @@
     } catch (err) { console.warn("Vespera search failed:", err); if (seq === searchSeq) res.innerHTML = failBox(); }
   }
 
+  // Quick preview popup (opens from any poster). "More info" goes to the full title page.
+  function awardsLong(s) {
+    if (!s) return null;
+    const won = s.match(/Won (\d+) (Oscars?|Primetime Emmys?|Golden Globes?|BAFTA Film Awards?)/i);
+    if (won) return `Winner of ${won[1]} ${won[2].replace(/s?$/, won[1] === "1" ? "" : "s").replace(/ss$/, "s")}`;
+    const nom = s.match(/Nominated for (\d+) (Oscars?|Primetime Emmys?|Golden Globes?)/i);
+    if (nom) return `Nominated for ${nom[1]} ${nom[2]}`;
+    return awardsShort(s);
+  }
+  const pvRow = (inner, cls = "") => `<div class="row-wrap pv-row-wrap">
+      <button class="row-arrow l" data-scroll="-1" aria-label="Scroll left">${icons.left}</button>
+      <div class="row pv-row ${cls}">${inner}</div>
+      <button class="row-arrow r" data-scroll="1" aria-label="Scroll right">${icons.right}</button></div>`;
+  function previewHTML(t, loading) {
+    const saved = state.isSaved(t.key);
+    const cast = (t.castFull || []).slice(0, 6);
+    const castNames = t.castNames || t.cast || [];
+    const reviews = (t.reviews || []).slice(0, 8);
+    const related = (t.similar || []).map(k => items.get(k)).filter(Boolean).slice(0, 14);
+    const aw = awardsLong(t.awards);
+    const facts = [t.year, t.runtime, t.rated].filter(Boolean).map(x => `<span>${esc(x)}</span>`).join("");
+    return `<div class="pv-ambient" style="${t.backdrop || t.poster ? `background-image:url('${esc(t.backdrop || t.poster)}')` : art(t, "wide")}"></div>
+      <button class="pv-close" data-close aria-label="Close preview">${icons.x || "×"}</button>
+      <section class="pv-hero">
+        <div class="pv-media" id="pvMedia">${wideHTML(t, true)}</div>
+        <div class="pv-controls">
+          <button class="icon-btn" id="pvPause" aria-label="Pause trailer" hidden>${icons.pause}</button>
+          <button class="icon-btn" id="pvMute" aria-label="Unmute trailer" hidden>${icons.muted}</button>
+        </div>
+        <div class="pv-head">
+          ${t.logo ? `<img class="pv-logo" src="${esc(t.logo)}" alt="${esc(t.title)}">` : `<h2 class="pv-title">${esc(t.title)}</h2>`}
+          <div class="pv-actions">
+            ${t.trailer ? `<button class="btn btn-light" data-action="trailer" data-yt="${esc(t.trailer)}">${icons.play} Trailer</button>` : ""}
+            <button class="pv-round" data-save="${esc(t.key)}" aria-label="${saved ? "Remove from" : "Add to"} My List">${saved ? icons.check : icons.plus}</button>
+            <a class="btn btn-ghost pv-more" data-preview-more href="#/title/${esc(t.key)}">More info</a>
+          </div>
+        </div>
+      </section>
+      <div class="pv-body">
+        <section class="pv-panel">
+          <div class="pv-main">
+            <div class="pv-facts"><span class="pv-match">${match(t)}% Match</span>${facts}</div>
+            ${scoreChips(t) || aw ? `<div class="pv-scores">${scoreChips(t)}${aw ? `<span class="pv-award">${icons.trophy} ${esc(aw)}</span>` : ""}</div>` : ""}
+            <p class="pv-syn">${esc(t.synopsis || "No description available yet.")}</p>
+          </div>
+          <div class="pv-side">
+            ${castNames.length ? `<p><span>Cast:</span> ${castNames.slice(0, 3).map(c => `<a href="#/search?q=${slug(c)}" data-close>${esc(c)}</a>`).join(", ")}${castNames.length > 3 ? `, <a href="#/title/${esc(t.key)}" data-preview-more>more</a>` : ""}</p>` : ""}
+            ${(t.genres || []).length ? `<p><span>Genres:</span> ${t.genres.map(g => `<a href="#/genre/${slug(g)}" data-close>${esc(g)}</a>`).join(", ")}</p>` : ""}
+            ${t.by ? `<p><span>${esc(t.byRole || "By")}:</span> ${esc(t.by)}</p>` : ""}
+            ${cast.length ? `<div class="pv-faces">${cast.map(c => `<a href="#/search?q=${slug(c.name)}" data-close title="${esc(c.name)}${c.role ? ` as ${esc(c.role)}` : ""}">${c.photo ? `<img src="${esc(c.photo)}" alt="${esc(c.name)}" loading="lazy">` : `<span>${esc(c.name[0])}</span>`}</a>`).join("")}</div>` : ""}
+          </div>
+        </section>
+        ${loading ? `<div class="pv-loading skel"></div>` : ""}
+        ${reviews.length ? `<section class="pv-sec"><h3>Reviews</h3>${pvRow(reviews.map(r => `<article class="pv-review">
+            <header><span class="avatar" style="background:${AV_COLORS[hash(r.author || "?") % AV_COLORS.length]}">${esc((r.author || "?")[0].toUpperCase())}</span>
+              <div><b>${esc(r.author || "Viewer")}</b><small>${esc(fmtDate(r.date))}</small></div>
+              ${r.rating ? `<span class="pv-rating">★ ${r.rating}<small> / 10</small></span>` : ""}</header>
+            <p>${esc(r.content || "")}</p>
+            <a href="#/title/${esc(t.key)}" data-preview-more>View more</a></article>`).join(""), "pv-reviews")}</section>` : ""}
+        ${related.length ? `<section class="pv-sec"><h3>You Might Also Like</h3>${pvRow(related.map(x => `<button type="button" class="pv-poster" data-preview="${esc(x.key)}" aria-label="${esc(x.title)}">${posterHTML(x)}</button>`).join(""), "pv-posters")}</section>` : ""}
+      </div>`;
+  }
   async function openTitlePreview(key) {
     const cached = items.get(key);
     if (!cached) return;
-    modal(`<div class="tp-loading"><div class="loading-spot skel"></div><p>Opening preview…</p></div>
-      <style>
-        .modal.title-preview-modal{width:min(94vw,980px);max-height:92vh;padding:0;overflow:auto;border:1px solid rgba(255,255,255,.16);background:linear-gradient(145deg,#132a35f2,#10202cf5 48%,#171522f7);box-shadow:0 28px 100px #000b;color:#f7f8fb}.title-preview-modal .tp-loading{padding:35px}.tp-loading .loading-spot{height:280px}.tp-hero{position:relative;min-height:300px;display:flex;align-items:end;padding:30px;background-size:cover;background-position:center;isolation:isolate}.tp-hero:before{content:"";position:absolute;inset:0;z-index:-1;background:linear-gradient(0deg,rgba(5,13,20,.98),rgba(5,13,20,.25) 75%),linear-gradient(90deg,rgba(3,12,18,.55),transparent)}.tp-close{position:absolute;right:14px;top:14px;width:38px;height:38px;border-radius:50%;border:1px solid #ffffff55;background:#07121a99;color:white;font-size:23px;cursor:pointer}.tp-head{max-width:670px}.tp-head h2{font-size:clamp(28px,5vw,48px);letter-spacing:.12em;text-transform:uppercase;margin:0 0 13px;text-shadow:0 3px 18px #000}.tp-actions{display:flex;flex-wrap:wrap;gap:9px}.tp-content{padding:18px 24px 26px}.tp-facts{display:grid;grid-template-columns:minmax(0,1.3fr) minmax(230px,.8fr);gap:22px;padding:17px;border:1px solid #ffffff25;border-radius:14px;background:rgba(255,255,255,.055);backdrop-filter:blur(16px)}.tp-meta{display:flex;flex-wrap:wrap;gap:9px 13px;font-size:12px;color:#d7e1e8;margin-bottom:12px}.tp-syn{font-size:13px;line-height:1.65;color:#e0e8ed;margin:10px 0 0}.tp-cast-label{font-size:11px;color:#b8c7d1;margin-bottom:10px}.tp-cast{display:flex;gap:7px;flex-wrap:wrap}.tp-cast a{width:40px;height:40px;border-radius:50%;overflow:hidden;border:1px solid #ffffff55;background:#172a34}.tp-cast img{width:100%;height:100%;object-fit:cover}.tp-section{margin-top:22px}.tp-section h3{font-size:15px;margin:0 0 11px}.tp-reviews{display:grid;grid-template-columns:repeat(auto-fit,minmax(170px,1fr));gap:10px}.tp-review{padding:13px;border:1px solid #ffffff20;border-radius:12px;background:#ffffff0b;min-width:0}.tp-review b{font-size:12px}.tp-review p{font-size:11px;line-height:1.5;color:#d5e0e7;margin:8px 0 0;display:-webkit-box;-webkit-line-clamp:3;-webkit-box-orient:vertical;overflow:hidden}.tp-related{display:grid;grid-auto-flow:column;grid-auto-columns:minmax(125px,1fr);gap:10px;overflow-x:auto;padding-bottom:6px}.tp-related button{border:0;background:transparent;color:white;text-align:left;cursor:pointer;padding:0}.tp-related img{width:100%;aspect-ratio:2/3;object-fit:cover;border-radius:8px;background:#1a2630}.tp-related small{display:block;margin-top:5px;font-size:11px}.tp-loading p{color:var(--muted)}@media(max-width:650px){.tp-hero{min-height:245px;padding:20px}.tp-content{padding:14px}.tp-facts{grid-template-columns:1fr}.tp-cast-side{border-top:1px solid #ffffff20;padding-top:13px}}
-      </style>`, async back => {
-      let t;
-      try { t = await detail(key); } catch { t = cached; }
-      if (!back.isConnected || !t) return;
-      const image = t.backdrop || t.posterLg || t.poster || "";
-      const cast = (t.castFull || []).slice(0, 6);
-      const reviews = (t.reviews || []).slice(0, 3);
-      const related = (t.similar || []).map(k => items.get(k)).filter(Boolean).slice(0, 10);
-      const saved = state.isSaved(t.key);
-      const watch = LIVE && t.tmdbId ? `#/watch/${esc(t.key)}${t.kind === "tv" ? `?season=${t.seasons?.[0]?.n || 1}&episode=1` : ""}` : "";
-      back.querySelector(".modal").innerHTML = `
-        <section class="tp-hero" style="${image ? `background-image:url('${esc(image)}')` : ""}">
-          <button class="tp-close" data-close aria-label="Close preview">×</button>
-          <div class="tp-head"><p class="eyebrow">${esc(typeLabel(t))}${t.year ? ` · ${t.year}` : ""}</p><h2>${esc(t.title)}</h2>
-            <div class="tp-actions">${watch ? `<a class="btn btn-light" href="#/${watch.replace(/^#\//, "")}">${icons.play} Play</a>` : ""}
-              <a class="btn btn-ghost tp-more-info" data-preview-more href="#/title/${esc(t.key)}">More info ${icons.ext}</a>
-              <button class="btn btn-ghost" data-save="${esc(t.key)}">${saved ? icons.check + " On My List" : icons.plus + " My List"}</button>
-            </div>
-          </div>
-        </section>
-        <div class="tp-content">
-          <div class="tp-facts"><div><div class="tp-meta"><span>${match(t)}% Match</span>${t.year ? `<span>${t.year}</span>` : ""}${t.runtime ? `<span>${esc(t.runtime)}</span>` : ""}${t.genres?.length ? `<span>${esc(t.genres.slice(0,3).join(" · "))}</span>` : ""}${t.vote ? `<span>★ ${t.vote.toFixed(1)}</span>` : ""}</div>
-            ${scoreChips(t)}<p class="tp-syn">${esc(t.synopsis || "No description available yet.")}</p></div>
-            ${cast.length ? `<div class="tp-cast-side"><div class="tp-cast-label">Cast${t.castNames?.length ? ` · ${esc(t.castNames.slice(0,3).join(", "))}` : ""}</div><div class="tp-cast">${cast.map(c => `<a href="#/search?q=${slug(c.name)}" title="${esc(c.name)}">${c.photo ? `<img src="${esc(c.photo)}" alt="${esc(c.name)}" loading="lazy">` : ""}</a>`).join("")}</div></div>` : ""}
-          </div>
-          ${reviews.length ? `<section class="tp-section"><h3>Reviews</h3><div class="tp-reviews">${reviews.map(r => `<article class="tp-review"><b>${esc(r.author || "Viewer")}${r.rating ? ` · ★ ${r.rating}/10` : ""}</b><p>${esc(r.content || "")}</p></article>`).join("")}</div></section>` : ""}
-          ${related.length ? `<section class="tp-section"><h3>You Might Also Like</h3><div class="tp-related">${related.map(x => `<button type="button" data-preview="${esc(x.key)}">${x.poster ? `<img src="${esc(x.poster)}" alt="${esc(x.title)}" loading="lazy">` : `<div class="art" style="aspect-ratio:2/3"></div>`}<small>${esc(x.title)}</small></button>`).join("")}</div></section>` : ""}
-        </div>`;
-    }, "title-preview-modal");
+    modal(previewHTML(cached, LIVE && !cached.full), async back => {
+      const box = back.querySelector(".modal");
+      let t = cached;
+      if (LIVE && !cached.full) {
+        try { t = await detail(key); } catch { t = cached; }
+        if (!back.isConnected || !t) return;
+        box.innerHTML = previewHTML(t, false);
+      }
+      // Muted trailer in the hero, like the home page.
+      if (t.trailer) {
+        const media = box.querySelector("#pvMedia"), mute = box.querySelector("#pvMute"), pause = box.querySelector("#pvPause");
+        setTimeout(() => {
+          if (!back.isConnected) return;
+          const wrap = mountBgVideo(media, t.trailer, mute);
+          if (!wrap) return;
+          let paused = false; pause.hidden = false;
+          pause.onclick = e => { e.stopPropagation(); paused = !paused; const f = wrap.querySelector("iframe"); if (f) ytCmd(f, paused ? "pauseVideo" : "playVideo");
+            pause.innerHTML = paused ? icons.play : icons.pause; pause.setAttribute("aria-label", paused ? "Play trailer" : "Pause trailer"); };
+        }, 900);
+      }
+    }, "pv-modal");
   }
 
   async function pageTitle(key) {
@@ -1129,8 +1152,8 @@
           <p class="detail-syn">${esc(t.synopsis || "No synopsis yet.")}</p>
           ${scoreChips(t) || aw ? `<div class="score-row">${scoreChips(t)}${aw ? `<span class="chip" title="${esc(t.awards)}">${icons.trophy} ${esc(aw)}</span>` : ""}</div>` : ""}
           <div class="hero-actions">
-            ${LIVE && t.tmdbId ? `<a class="btn btn-primary" href="#/watch/${esc(t.key)}${t.kind === "tv" ? `?season=${t.seasons?.[0]?.n || 1}&episode=1` : ""}">${icons.play} Play</a>` : ""}
-            ${t.trailer ? `<button class="btn btn-ghost" data-action="trailer" data-yt="${esc(t.trailer)}">${icons.play} Trailer</button>` : ""}
+            ${t.trailer ? `<button class="btn btn-primary" data-action="trailer" data-yt="${esc(t.trailer)}">${icons.play} Trailer</button>` : ""}
+            <a class="btn btn-ghost" href="${watchHref}" ${watchHref.startsWith("http") ? 'target="_blank" rel="noopener"' : 'data-action="jump"'}>${icons.ext} Where to watch</a>
             <button class="btn btn-ghost" data-save="${esc(t.key)}">${saved ? icons.check + " On My List" : icons.plus + " Add to My List"}</button>
             <button class="icon-btn" data-action="share" data-id="${esc(t.key)}" aria-label="Copy link">${icons.share}</button>
           </div>
@@ -1164,71 +1187,20 @@
     ${row("You Might Also Like", similar)}
     ${LIVE ? asyncRow("Trending Now", null, async () => (await data.row({ path: "trending/all/week" })).filter(x => x.key !== t.key)) : ""}`;
   }
-  async function pageWatch(key, params) {
-    const t = await detail(key);
-    if (!t || !LIVE || !t.tmdbId) {
-      return `<div class="page"><button class="back-link" data-action="back">${icons.left} Back</button>
-        <section class="panel"><h1>Playback unavailable</h1><p>This title needs a live TMDB record before it can be played.</p></section></div>`;
-    }
-
-    const kind = t.kind === "tv" ? "tv" : "movie";
-    const season = kind === "tv" ? Math.max(1, Number(params.get("season")) || t.seasons?.[0]?.n || 1) : null;
-    const episode = kind === "tv" ? Math.max(1, Number(params.get("episode")) || 1) : null;
-    const path = kind === "movie"
-      ? `/playback/movie/${encodeURIComponent(t.tmdbId)}`
-      : `/playback/tv/${encodeURIComponent(t.tmdbId)}?season=${season}&episode=${episode}`;
-
-    let playback;
-    let error = "";
-    try {
-      const response = await fetch(`${PLAYBACK_API}${path}`, { headers: { accept: "application/json" } });
-      const payload = await response.json().catch(() => ({}));
-      if (!response.ok) throw new Error(payload.error || `Playback API ${response.status}`);
-      playback = payload;
-    } catch (e) {
-      error = e.message || "Couldn't load playback providers.";
-      playback = { providers: [] };
-    }
-
-    const providers = playback.providers || [];
-    const active = providers[0] || null;
-    const saved = findSavedProgress(kind, t.tmdbId, season, episode);
-    const resumeAt = saved && saved.timestamp >= 30 && (saved.progress ?? 0) < .95
-      ? Math.max(0, saved.timestamp - 5) : null;
-    const episodeLabel = kind === "tv" ? ` · S${season} E${episode}` : "";
-    return `<div class="page watch-page" id="watchPage" data-watch-type="${kind}" data-watch-id="${esc(t.tmdbId)}" data-watch-season="${season || ""}" data-watch-episode="${episode || ""}" data-watch-resume="${resumeAt || ""}">
-      <a class="back-link" href="#/title/${esc(t.key)}">${icons.left} Back to details</a>
-      <header class="watch-heading">
-        <div><p class="eyebrow">NOW PLAYING</p><h1>${esc(t.title)}${episodeLabel}</h1>
-          ${kind === "tv" ? `<p>Season ${season}, Episode ${episode}</p>` : ""}
-        </div>
-      </header>
-      <div class="watch-player-wrap" id="watchPlayer">
-        ${active
-          ? `<iframe id="watchFrame" src="${esc(withResume(active.url, resumeAt))}" title="${esc(t.title)} player" allow="autoplay; fullscreen; picture-in-picture" allowfullscreen referrerpolicy="no-referrer-when-downgrade"></iframe>`
-          : `<div class="watch-empty"><div class="empty-icon">${icons.play}</div><h2>No playback provider available</h2><p>${error ? esc(error) : "There is currently no configured playback provider for this title."}</p></div>`}
-        ${active ? `<button class="watch-fullscreen" data-action="watch-fullscreen" aria-label="Fullscreen in this tab" title="Fullscreen in this tab"${isFrameXTVProvider(active.id, active.name) ? "" : " hidden"}>${icons.ext}<span>Fullscreen here</span></button>` : ""}
-      </div>
-      ${providers.length ? `<section class="watch-servers">
-        <div class="section-head"><h2>Playback servers</h2><span class="fine">Choose a server</span></div>
-        <div class="watch-server-list">${providers.map((p, i) => { const canResume = Boolean(resumeParamFor(p.url)); return `<button class="btn ${i === 0 ? "btn-primary" : "btn-ghost"} watch-server" data-action="watch-server" data-url="${esc(withResume(p.url, resumeAt))}" data-start-url="${esc(p.url)}" data-provider="${esc(p.id)}" data-provider-name="${esc(p.name)}" data-resume-supported="${canResume}" aria-pressed="${i === 0}"><span class="watch-server-name">${icons.play} ${esc(p.name)}</span>${resumeAt ? `<small class="server-resume-status ${canResume ? "supported" : "unsupported"}">${canResume ? "Resume supported" : "Manual seek"}</small>` : ""}</button>`; }).join("")}</div>
-      </section>` : ""}
-      ${resumeAt && active ? `<div class="watch-resume" id="watchResume"><span aria-hidden="true">↻</span> <span>${resumeParamFor(active.url) ? `Continue from <b>${formatWatchTime(resumeAt)}</b>` : `You stopped at <b>${formatWatchTime(resumeAt)}</b>. This server can't resume automatically.`}</span>${providers.filter(p => p.id !== active.id && resumeParamFor(p.url)).map(p => `<button class="text-btn" data-action="watch-resume-server" data-url="${esc(withResume(p.url, resumeAt))}" data-provider="${esc(p.id)}">Resume on ${esc(p.name)}</button>`).join("")}<button class="text-btn" data-action="watch-start-over" data-url="${esc(active.url)}">Start over</button></div>` : ""}
-      ${error && providers.length ? `<p class="fine">${esc(error)}</p>` : ""}
-      ${t.synopsis ? `<p class="watch-description">${esc(t.synopsis)}</p>` : ""}
-    </div>
-    <style>
-      .watch-page{max-width:1180px;margin:0 auto;padding:34px 0 70px}
-      .watch-heading{display:flex;justify-content:space-between;align-items:end;margin:18px 0 22px}
-      .watch-heading h1{margin:4px 0;font-size:clamp(25px,4vw,38px)}
-      .watch-player-wrap{position:relative;aspect-ratio:16/9;background:#050608;border:1px solid var(--line);border-radius:16px;overflow:hidden}
-      .watch-player-wrap iframe{width:100%;height:100%;border:0;display:block}
-      .watch-empty{height:100%;min-height:260px;display:flex;flex-direction:column;align-items:center;justify-content:center;text-align:center;padding:24px;color:var(--muted)}
-      .watch-empty h2{color:var(--text);margin:14px 0 4px}
-      .watch-fullscreen[hidden]{display:none!important}.watch-fullscreen{position:absolute;right:14px;bottom:14px;z-index:5;border:1px solid #ffffff55;border-radius:9px;padding:10px 12px;background:#111d;color:white;cursor:pointer;display:flex;align-items:center;gap:7px;font-size:12px;font-weight:650}.watch-fullscreen:hover{background:#263044}.watch-servers{margin-top:26px}.watch-server-list{display:flex;flex-wrap:wrap;gap:10px}.watch-server{display:flex;flex-direction:column;align-items:flex-start;gap:4px}.watch-server-name{display:flex;align-items:center;gap:7px}.server-resume-status{font-size:10px;line-height:1.2;opacity:.9;padding-left:23px}.server-resume-status.supported{color:#70d6a0}.server-resume-status.unsupported{color:#e9b56f}.watch-resume{display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin-top:14px;padding:12px 14px;border:1px solid var(--line);border-radius:10px;color:var(--muted);font-size:13px}.watch-resume b{color:var(--text)}
-      .watch-description{max-width:850px;color:var(--muted);line-height:1.7;margin-top:24px}
-      @media(max-width:700px){.watch-page{padding:22px 16px 50px}.watch-heading{margin:12px 0 16px}.watch-player-wrap{border-radius:10px}}
-    </style>`;
+  // IMDb episode ratings, one OMDb request per season (needs the OMDb key).
+  async function omdbSeasonRatings(t, total) {
+    if (!FEAT.omdb || !t.imdb) return null;
+    const nums = (t.seasons || []).map(s => s.n).slice(0, total);
+    const seasons = {};
+    await Promise.all(nums.map(async n => {
+      const url = SERVER ? `/api/omdb?i=${encodeURIComponent(t.imdb)}&Season=${n}`
+        : `https://www.omdbapi.com/?i=${encodeURIComponent(t.imdb)}&Season=${n}&apikey=${encodeURIComponent(CFG.omdbKey)}`;
+      try {
+        const o = await fetch(url).then(r => r.json());
+        if (o.Response === "True") seasons[n] = (o.Episodes || []).map(e => ({ episode_number: Number(e.Episode), rating: e.imdbRating && e.imdbRating !== "N/A" ? Number(e.imdbRating) : null }));
+      } catch {}
+    }));
+    return { imdbId: t.imdb, seasons };
   }
 
   async function openEpisodeRatings(t) {
@@ -1243,7 +1215,7 @@
       const ratingClass = rating => !rating ? "unrated" : rating >= 9 ? "excellent" : rating >= 8 ? "great" : rating >= 7 ? "good" : rating >= 6 ? "average" : "low";
       try {
         const [imdbResult, seasonResults] = await Promise.all([
-          fetch(`${PLAYBACK_API}/tv/${encodeURIComponent(t.tmdbId)}/imdb-ratings`, { headers: { accept: "application/json" } }).then(r => r.ok ? r.json() : null).catch(() => null),
+          omdbSeasonRatings(t, total),
           Promise.all(Array.from({ length: total }, (_, i) => {
             const n = Number(t.seasons?.[i]?.n || i + 1);
             return tmdb(`tv/${t.tmdbId}/season/${n}`).then(x => [n, x.episodes || []]).catch(() => [n, []]);
@@ -1299,7 +1271,6 @@
         <div><b>${e.episode_number}. ${esc(e.name)}</b>
           <div class="meta" style="color:var(--muted);font-size:12.5px;margin:4px 0 6px">${e.air_date ? `<span>${esc(fmtDate(e.air_date))}</span>` : ""}${e.runtime ? `<span class="dot"></span><span>${e.runtime}m</span>` : ""}${e.vote_average ? `<span class="dot"></span><span>★ ${e.vote_average.toFixed(1)}</span>` : ""}</div>
           <p>${esc(e.overview || "No description yet.")}</p>
-          <a class="btn btn-primary" style="display:inline-flex;margin-top:10px" href="#/watch/${esc(t.key)}?season=${encodeURIComponent(n)}&episode=${encodeURIComponent(e.episode_number)}">${icons.play} Play episode</a>
         </div></article>`).join("") || empty("No episodes listed", "");
     } catch { box.innerHTML = failBox(); }
   }
@@ -1312,7 +1283,7 @@
       data: {
         profiles: store.get("profiles", []), current: store.get("current", null), lists: store.get("lists", {}),
         perf: store.get("perf", false), autoplay: store.get("autoplay", true), region: store.get("region", CFG.region || "US"),
-        lang: store.get("lang", "English"), watchProgress: readWatchProgress()
+        lang: store.get("lang", "English")
       }
     };
     const blob = new Blob([JSON.stringify(payload, null, 2)], { type: "application/json" });
@@ -1327,12 +1298,11 @@
       try {
         const payload = JSON.parse(String(reader.result || "")); const d = payload?.data;
         if (payload?.app !== "Vespera" || !d || !Array.isArray(d.profiles) || !d.lists || typeof d.lists !== "object") throw new Error("invalid backup");
-        modal(`<h2>Import Vespera backup?</h2><p>This replaces the profiles, lists, settings and watch progress currently saved in this browser.</p><p class="fine">Backup date: ${esc(payload.exportedAt ? fmtDate(payload.exportedAt.slice(0,10)) : "Unknown")}</p><div class="modal-actions"><button class="btn btn-ghost" data-close>Cancel</button><button class="btn btn-primary" id="confirmBackupImport">Import backup</button></div>`, (back, close) => {
+        modal(`<h2>Import Vespera backup?</h2><p>This replaces the profiles, lists and settings currently saved in this browser.</p><p class="fine">Backup date: ${esc(payload.exportedAt ? fmtDate(payload.exportedAt.slice(0,10)) : "Unknown")}</p><div class="modal-actions"><button class="btn btn-ghost" data-close>Cancel</button><button class="btn btn-primary" id="confirmBackupImport">Import backup</button></div>`, (back, close) => {
           back.querySelector("#confirmBackupImport").onclick = () => {
             hydrating = true;
             try {
               ["profiles", "current", "lists", "perf", "autoplay", "region", "lang"].forEach(k => { if (d[k] !== undefined) localStorage.setItem("vespera." + k, JSON.stringify(d[k])); });
-              localStorage.setItem(WATCH_PROGRESS_KEY, JSON.stringify(Array.isArray(d.watchProgress) ? d.watchProgress : []));
             } finally { hydrating = false; }
             ensureGuestProfile(); close(); toast("Backup imported"); render();
           };
@@ -1529,36 +1499,190 @@
     onMount?.(back, close);
     back.querySelector("input, button")?.focus();
   }
+  // Main characters shown first for each franchise (wiki page names; redirects are followed).
+  const AV_MAIN_CHARACTERS = {
+    "Harry Potter": ["Harry Potter", "Hermione Granger", "Ronald Weasley", "Tom Riddle", "Severus Snape", "Minerva McGonagall", "Rubeus Hagrid", "Albus Dumbledore", "Draco Malfoy", "Sirius Black", "Luna Lovegood", "Neville Longbottom", "Ginevra Weasley", "Bellatrix Lestrange", "Remus Lupin", "Dobby", "Hedwig", "Fawkes", "Sorting Hat", "Dementor"],
+    "Game of Thrones": ["Jon Snow", "Daenerys Targaryen", "Tyrion Lannister", "Arya Stark", "Sansa Stark", "Cersei Lannister", "Jaime Lannister", "Eddard Stark", "Bran Stark", "Joffrey Baratheon", "Sandor Clegane", "Brienne of Tarth", "Petyr Baelish", "Varys", "Night King", "Theon Greyjoy"],
+    "House of the Dragon": ["Rhaenyra Targaryen", "Daemon Targaryen", "Alicent Hightower", "Viserys I Targaryen", "Otto Hightower", "Aegon II Targaryen", "Aemond Targaryen", "Corlys Velaryon", "Rhaenys Targaryen", "Criston Cole"],
+    "Star Wars": ["Luke Skywalker", "Leia Organa", "Han Solo", "Darth Vader", "Yoda", "Obi-Wan Kenobi", "Chewbacca", "R2-D2", "C-3PO", "Palpatine", "Rey Skywalker", "Kylo Ren", "Din Djarin", "Grogu", "Ahsoka Tano", "Boba Fett", "Padmé Amidala", "Mace Windu"],
+    "Marvel": ["Peter Parker (Earth-616)", "Anthony Stark (Earth-616)", "Steven Rogers (Earth-616)", "Thor Odinson (Earth-616)", "Bruce Banner (Earth-616)", "Natalia Romanova (Earth-616)", "T'Challa (Earth-616)", "Wade Wilson (Earth-616)", "James Howlett (Earth-616)", "Stephen Strange (Earth-616)", "Loki Laufeyson (Earth-616)", "Thanos (Earth-616)"],
+    "The Lord of the Rings": ["Frodo Baggins", "Samwise Gamgee", "Gandalf", "Aragorn", "Legolas", "Gimli", "Boromir", "Gollum", "Bilbo Baggins", "Sauron", "Saruman", "Galadriel", "Arwen", "Éowyn", "Meriadoc Brandybuck", "Peregrin Took"],
+    "Stranger Things": ["Eleven", "Mike Wheeler", "Dustin Henderson", "Lucas Sinclair", "Will Byers", "Max Mayfield", "Steve Harrington", "Nancy Wheeler", "Jonathan Byers", "Jim Hopper", "Joyce Byers", "Robin Buckley", "Eddie Munson", "Vecna"],
+    "The Walking Dead": ["Rick Grimes", "Daryl Dixon", "Michonne", "Negan", "Glenn Rhee", "Maggie Greene", "Carol Peletier", "Carl Grimes", "Eugene Porter", "Shane Walsh"],
+    "Breaking Bad": ["Walter White", "Jesse Pinkman", "Skyler White", "Hank Schrader", "Saul Goodman", "Gustavo Fring", "Mike Ehrmantraut", "Marie Schrader", "Walter White Jr.", "Tuco Salamanca"],
+    "The Witcher": ["Geralt of Rivia", "Yennefer of Vengerberg", "Cirilla Fiona Elen Riannon", "Jaskier", "Triss Merigold", "Vesemir"],
+    "Friends": ["Rachel Green", "Monica Geller", "Phoebe Buffay", "Joey Tribbiani", "Chandler Bing", "Ross Geller", "Gunther", "Janice Litman Goralnik"],
+    "The Office": ["Michael Scott", "Dwight Schrute", "Jim Halpert", "Pam Beesly", "Andy Bernard", "Angela Martin", "Kevin Malone", "Oscar Martinez", "Stanley Hudson", "Kelly Kapoor", "Creed Bratton", "Toby Flenderson"],
+    "Pokémon": ["Pikachu", "Ash Ketchum", "Charizard", "Bulbasaur", "Squirtle", "Eevee", "Mewtwo", "Jigglypuff", "Meowth", "Gengar", "Snorlax", "Lucario"],
+    "Avatar: The Last Airbender": ["Aang", "Katara", "Sokka", "Zuko", "Toph Beifong", "Iroh", "Azula", "Appa", "Momo", "Ozai"],
+    "SpongeBob": ["SpongeBob SquarePants", "Patrick Star", "Squidward Tentacles", "Eugene H. Krabs", "Sandy Cheeks", "Sheldon J. Plankton", "Gary the Snail", "Mrs. Puff"],
+    "Dragon Ball": ["Goku", "Vegeta", "Gohan", "Piccolo", "Trunks", "Frieza", "Cell", "Majin Buu", "Bulma", "Krillin", "Beerus", "Broly"],
+    "Naruto": ["Naruto Uzumaki", "Sasuke Uchiha", "Sakura Haruno", "Kakashi Hatake", "Itachi Uchiha", "Hinata Hyūga", "Gaara", "Jiraiya", "Madara Uchiha", "Shikamaru Nara", "Rock Lee", "Orochimaru"],
+    "One Piece": ["Monkey D. Luffy", "Roronoa Zoro", "Nami", "Usopp", "Sanji", "Tony Tony Chopper", "Nico Robin", "Franky", "Brook", "Jinbe", "Shanks", "Portgas D. Ace"],
+    "The Simpsons": ["Homer Simpson", "Marge Simpson", "Bart Simpson", "Lisa Simpson", "Maggie Simpson", "Ned Flanders", "Moe Szyslak", "Charles Montgomery Burns", "Krusty the Clown", "Milhouse Van Houten", "Apu Nahasapeemapetilon", "Waylon Smithers"],
+    "Rick and Morty": ["Rick Sanchez", "Morty Smith", "Summer Smith", "Beth Smith", "Jerry Smith", "Mr. Meeseeks", "Birdperson", "Squanchy", "Mr. Poopybutthole", "Evil Morty"],
+    "Peaky Blinders": ["Thomas Shelby", "Arthur Shelby", "Polly Gray", "John Shelby", "Ada Thorne", "Michael Gray", "Alfie Solomons", "Grace Shelby"],
+    "The Boys": ["Billy Butcher", "Hughie Campbell", "Homelander", "Starlight", "Kimiko Miyashiro", "Frenchie", "Mother's Milk", "Queen Maeve", "The Deep", "A-Train", "Soldier Boy", "Stormfront"],
+    "Supernatural": ["Dean Winchester", "Sam Winchester", "Castiel", "Bobby Singer", "Crowley", "Lucifer", "Jack Kline", "Rowena MacLeod"],
+    "Attack on Titan": ["Eren Yeager", "Mikasa Ackermann", "Armin Arlert", "Levi Ackermann", "Erwin Smith", "Hange Zoë", "Reiner Braun", "Annie Leonhart", "Historia Reiss", "Jean Kirstein", "Sasha Braus", "Zeke Yeager"],
+    "Demon Slayer": ["Tanjiro Kamado", "Nezuko Kamado", "Zenitsu Agatsuma", "Inosuke Hashibira", "Giyu Tomioka", "Kyojuro Rengoku", "Shinobu Kocho", "Muzan Kibutsuji", "Tengen Uzui", "Mitsuri Kanroji"],
+    "My Hero Academia": ["Izuku Midoriya", "Katsuki Bakugo", "Shoto Todoroki", "Ochaco Uraraka", "All Might", "Tenya Ida", "Shota Aizawa", "Tomura Shigaraki", "Eijiro Kirishima", "Endeavor"],
+    "The Hunger Games": ["Katniss Everdeen", "Peeta Mellark", "Gale Hawthorne", "Haymitch Abernathy", "Effie Trinket", "Coriolanus Snow", "Primrose Everdeen", "Finnick Odair", "Cinna", "Johanna Mason"],
+    "The Matrix": ["Neo", "Trinity", "Morpheus", "Agent Smith", "The Oracle", "Niobe", "The Merovingian", "Cypher"],
+  };
+  // Franchises with character portraits (from each franchise's Fandom wiki).
+  const AV_FRANCHISES = [
+    ["Harry Potter","harrypotter"], ["Game of Thrones","gameofthrones"], ["House of the Dragon","gameofthrones"], ["Star Wars","starwars"],
+    ["Marvel","marvel"], ["DC","dc"], ["The Lord of the Rings","lotr"], ["Stranger Things","strangerthings"],
+    ["The Walking Dead","walkingdead"], ["Breaking Bad","breakingbad"], ["The Witcher","witcher"], ["Friends","friends"],
+    ["The Office","theoffice"], ["Pokémon","pokemon"], ["Avatar: The Last Airbender","avatar"], ["SpongeBob","spongebob"],
+    ["Dragon Ball","dragonball"], ["Naruto","naruto"], ["One Piece","onepiece"], ["The Simpsons","simpsons"],
+    ["Rick and Morty","rickandmorty"], ["Peaky Blinders","peakyblinders"], ["The Boys","theboys"], ["Supernatural","supernatural"],
+    ["The Big Bang Theory","bigbangtheory"], ["Sailor Moon","sailormoon"], ["Attack on Titan","attackontitan"], ["Demon Slayer","kimetsunoyaiba"],
+    ["My Hero Academia","myheroacademia"], ["The Hunger Games","thehungergames"], ["Twilight","twilightsaga"], ["The Matrix","matrix"], ["Jurassic Park","jurassicpark"],
+  ].map(([name, wiki]) => ({ name, wiki, chars: AV_MAIN_CHARACTERS[name] || null }));
+
+  // Full-screen character picker. Calls onPick(imageUrl, name) or closes on Skip.
+  function openCharacterPicker(onPick) {
+    const el = document.createElement("div");
+    el.className = "cp"; el.setAttribute("role", "dialog"); el.setAttribute("aria-modal", "true"); el.setAttribute("aria-label", "Choose your avatar");
+    el.innerHTML = `
+      <header class="cp-top">
+        <h2>Choose your avatar</h2>
+        <label class="cp-search">${icons.search}<input id="cpQ" type="search" placeholder="Search a franchise, or press Enter to search TMDB" autocomplete="off" aria-label="Search franchises"></label>
+      </header>
+      <nav class="cp-chips" id="cpChips" aria-label="Franchises"></nav>
+      <main class="cp-body">
+        <h3 class="cp-heading" id="cpHeading"></h3>
+        <div class="cp-grid" id="cpGrid"></div>
+        <p class="cp-status" id="cpStatus"></p>
+        <div class="cp-more" id="cpMoreWrap" hidden><button type="button" class="btn btn-ghost" id="cpMore">Load more characters</button></div>
+        <div class="cp-alt"><button type="button" class="cp-link" id="cpMode">Browse show characters from TMDB</button></div>
+      </main>
+      <footer class="cp-foot"><button type="button" class="cp-skip" id="cpSkip">Skip</button></footer>`;
+    document.body.appendChild(el);
+    document.body.classList.add("cp-open");
+    const $ = id => el.querySelector("#" + id);
+    const q = $("cpQ"), chips = $("cpChips"), grid = $("cpGrid"), heading = $("cpHeading"), status = $("cpStatus"), moreWrap = $("cpMoreWrap"), more = $("cpMore"), modeBtn = $("cpMode");
+    let mode = "fandom", active = null, cont = null, loading = false, seq = 0;
+
+    const close = () => { el.remove(); document.body.classList.remove("cp-open"); removeEventListener("keydown", onKey, true); };
+    const onKey = e => { if (e.key === "Escape") { e.stopImmediatePropagation(); close(); } };
+    addEventListener("keydown", onKey, true);
+    $("cpSkip").onclick = close;
+
+    const circle = (src, name, sub) => `<button type="button" class="cp-face" data-src="${esc(src)}" data-name="${esc(name)}" title="${esc(name)}${sub ? ` · ${esc(sub)}` : ""}">
+      <span class="cp-ring"><img src="${esc(src)}" alt="" loading="lazy"></span><small>${esc(name)}</small></button>`;
+    const renderChips = () => {
+      const term = q.value.trim().toLowerCase();
+      const list = AV_FRANCHISES.filter(f => !term || f.name.toLowerCase().includes(term));
+      chips.innerHTML = list.map(f => `<button type="button" class="pill ${active?.name === f.name ? "on" : ""}" data-f="${esc(f.name)}">${esc(f.name)}</button>`).join("")
+        || `<span class="cp-hint">No franchise matches — press Enter to search TMDB.</span>`;
+    };
+    async function loadFandom(f, append) {
+      if (loading) return; loading = true; const my = ++seq;
+      if (!append) { active = f; cont = null; grid.innerHTML = Array.from({ length: 12 }, () => `<span class="cp-face skel-face"><span class="cp-ring skel"></span></span>`).join(""); heading.textContent = f.name; renderChips(); }
+      status.textContent = ""; moreWrap.hidden = true;
+      try {
+        const api = params => fetch(`https://${f.wiki}.fandom.com/api.php?${new URLSearchParams({ action: "query", prop: "pageimages", piprop: "thumbnail", pithumbsize: "400", format: "json", origin: "*", ...params })}`).then(r => r.json());
+        const label = t => t.replace(/ \((Earth-\d+|.*?)\)$/, "");
+        let pages = [];
+        if (!append) f.catState = null;
+        if (!append && f.chars) {
+          // Main characters, in the order listed (follows wiki redirects).
+          const d = await api({ titles: f.chars.join("|"), redirects: "1" });
+          const alias = {}; [...(d.query?.normalized || []), ...(d.query?.redirects || [])].forEach(r => alias[r.from] = r.to);
+          const byTitle = Object.fromEntries(Object.values(d.query?.pages || {}).map(x => [x.title, x]));
+          const resolve = t => { let x = t; for (let i = 0; i < 3 && alias[x]; i++) x = alias[x]; return byTitle[x]; };
+          pages = f.chars.map(resolve).filter(x => x?.thumbnail?.source);
+          f.catState = null; // "Load more" will continue from the wiki's character categories
+        } else {
+          // More characters from the first category this wiki actually uses.
+          const st = f.catState || (f.catState = { cats: ["Main Characters", "Main characters", "Characters", "Individuals", "Humans", "Males", "Females"], i: 0, cont: null });
+          while (st.i < st.cats.length && !pages.length) {
+            const d = await api({ generator: "categorymembers", gcmtitle: "Category:" + st.cats[st.i], gcmtype: "page", gcmlimit: "48", ...(st.cont || {}) });
+            pages = Object.values(d.query?.pages || {}).filter(x => x.thumbnail?.source);
+            st.cont = d.continue || null;
+            if (!st.cont) { st.i++; st.cont = null; }
+          }
+          const shown = new Set([...grid.querySelectorAll(".cp-face[data-name]")].map(b => b.dataset.name));
+          pages = pages.filter(x => !shown.has(label(x.title)));
+        }
+        if (my !== seq) return;
+        const html = pages.map(x => circle(x.thumbnail.source, label(x.title))).join("");
+        if (append) grid.insertAdjacentHTML("beforeend", html); else grid.innerHTML = html;
+        if (!grid.children.length && !append) { loading = false; return loadFandom(f, true); } // no named list → go straight to categories
+        if (!grid.children.length) status.textContent = `No portraits found for ${f.name}. Try another franchise or browse TMDB.`;
+        const st = f.catState; moreWrap.hidden = !!st && st.i >= st.cats.length;
+      } catch {
+        if (my === seq) { if (!append) grid.innerHTML = ""; status.textContent = `Couldn't reach the ${f.name} character wiki right now. Try another franchise or browse TMDB.`; }
+      } finally { loading = false; }
+    }
+    async function searchTmdb(term) {
+      if (!LIVE) { status.textContent = "TMDB isn't connected — add a key in config.js."; return; }
+      const my = ++seq; mode = "tmdb"; active = null; renderChips(); moreWrap.hidden = true;
+      heading.textContent = `Shows & films matching “${term}”`; status.textContent = ""; grid.innerHTML = "";
+      try {
+        const res = (await tmdb("search/multi", { query: term })).results?.filter(r => (r.media_type === "movie" || r.media_type === "tv") && r.poster_path).slice(0, 12) || [];
+        if (my !== seq) return;
+        grid.innerHTML = res.map(r => `<button type="button" class="cp-title" data-kind="${r.media_type}" data-id="${r.id}" data-name="${esc(r.title || r.name)}">
+          <img src="${IMG}w185${esc(r.poster_path)}" alt="" loading="lazy"><small>${esc(r.title || r.name)}</small></button>`).join("");
+        if (!res.length) status.textContent = "Nothing found on TMDB. Try another title.";
+      } catch { if (my === seq) status.textContent = "TMDB search failed. Try again."; }
+    }
+    async function loadCredits(kind, id, name) {
+      const my = ++seq; heading.textContent = name; grid.innerHTML = ""; status.textContent = "Loading characters…";
+      try {
+        const d = await tmdb(kind === "tv" ? `tv/${id}/aggregate_credits` : `movie/${id}/credits`);
+        if (my !== seq) return;
+        const cast = (d.cast || []).filter(c => c.profile_path).slice(0, 36);
+        grid.innerHTML = cast.map(c => { const role = c.character || c.roles?.[0]?.character || ""; return circle(`${IMG}w342${c.profile_path}`, role || c.name, role ? c.name : ""); }).join("");
+        status.textContent = cast.length ? "Character photos from TMDB (the actors who played them)." : "No character photos on TMDB for this title.";
+      } catch { if (my === seq) status.textContent = "Couldn't load characters from TMDB."; }
+    }
+    chips.addEventListener("click", e => { const b = e.target.closest("[data-f]"); if (!b) return; mode = "fandom"; modeBtn.textContent = "Browse show characters from TMDB"; loadFandom(AV_FRANCHISES.find(f => f.name === b.dataset.f)); });
+    grid.addEventListener("click", e => {
+      const face = e.target.closest(".cp-face[data-src]");
+      if (face) { onPick(face.dataset.src, face.dataset.name); close(); return; }
+      const title = e.target.closest(".cp-title"); if (title) loadCredits(title.dataset.kind, title.dataset.id, title.dataset.name);
+    });
+    more.onclick = () => active && loadFandom(active, true);
+    q.addEventListener("input", renderChips);
+    q.addEventListener("keydown", e => {
+      if (e.key !== "Enter") return; e.preventDefault();
+      const term = q.value.trim(); if (!term) return;
+      const exact = AV_FRANCHISES.find(f => f.name.toLowerCase() === term.toLowerCase());
+      if (exact && mode !== "tmdb") loadFandom(exact); else searchTmdb(term);
+    });
+    modeBtn.onclick = () => {
+      if (mode === "tmdb") { mode = "fandom"; modeBtn.textContent = "Browse show characters from TMDB"; q.value = ""; renderChips(); loadFandom(AV_FRANCHISES[0]); return; }
+      mode = "tmdb"; modeBtn.textContent = "Back to franchise characters";
+      q.placeholder = "Search a show or film on TMDB, then press Enter"; q.value = ""; q.focus();
+      heading.textContent = "Characters from TMDB"; grid.innerHTML = ""; moreWrap.hidden = true; status.textContent = "Search for a show or film above to see its characters.";
+    };
+    renderChips(); loadFandom(AV_FRANCHISES[0]);
+    setTimeout(() => q.focus({ preventScroll: true }), 50);
+  }
+
   function profileModal(existing) {
     let color = existing ? existing.color : state.profiles.length % AV_COLORS.length;
     let photo = existing?.avatar || null;
     let emoji = existing?.avatarEmoji || null;
-    const selectedClass = (url, em) => (photo === url && emoji === em) ? "on" : "";
     const previewProfile = () => ({ name: existing?.name || "You", color, avatar: photo, avatarEmoji: emoji });
-    const presetGrid = () => AV_PRESETS.map((em, i) => `<button type="button" class="av-choice ${selectedClass(null, em)}" data-avatar-emoji="${em}"><span class="av-emoji" style="background:${AV_COLORS[i % AV_COLORS.length]}">${em}</span><small>${["Fox","Panda","Frog","Tiger","Cat","Octopus","Penguin","Owl","Bear","Dragon","Koala","Unicorn","Wolf","Rabbit"][i]}</small></button>`).join("");
+    const presetGrid = () => AV_PRESETS.map((em, i) => `<button type="button" class="av-choice ${!photo && emoji === em ? "on" : ""}" data-avatar-emoji="${em}"><span class="av-emoji" style="background:${AV_COLORS[i % AV_COLORS.length]}">${em}</span></button>`).join("");
     modal(`<div class="avatar-picker">
       <h2>${existing ? "Edit profile" : "Add a profile"}</h2>
-      <p>${existing ? "Update the name, photo or avatar." : "Create a profile with its own photo, list and picks."}</p>
+      <p>${existing ? "Update the name, picture or colour." : "Each profile gets its own picture, list and picks."}</p>
       <div class="av-preview">${avatar(previewProfile())}<div><b id="avPreviewName">${esc(existing?.name || "New profile")}</b><small class="fine" style="display:block;margin:3px 0 0">Profile picture preview</small></div></div>
       <form id="pf">
         <div class="field"><label class="label" for="pname">Name</label><input class="input" id="pname" maxlength="16" value="${esc(existing?.name || "")}" required></div>
-        <div class="field"><span class="label">Profile photo</span><div class="av-tools">
-          <label class="btn btn-primary av-upload">${icons.share} Upload photo<input type="file" id="avatarFile" accept="image/png,image/jpeg,image/webp,image/gif"></label>
-          <button type="button" class="btn btn-ghost" id="avatarRemove" ${photo || emoji ? "" : "disabled"}>Remove photo</button>
-        </div><p class="fine" style="margin-top:7px">Choose an image from your device. Images are resized before saving.</p></div>
-        <div class="av-section-title">Default avatars</div><div class="av-grid">${presetGrid()}</div>
-        <div class="av-divider"></div>
-        <div class="av-section-title">Movie &amp; series characters</div>
-        <p class="fine">Browse a franchise to see its character portraits. No need to search for individual characters.</p>
-        <div class="av-search"><input class="input" id="avatarFranchiseQ" placeholder="Search franchises…" aria-label="Search franchises"><button class="btn btn-ghost" type="button" id="avatarFranchiseSearchBtn">Search</button></div>
-        <div id="avatarFranchiseStatus" class="av-status">Choose a franchise below to browse its characters.</div>
-        <div id="avatarFranchises" class="av-franchise-grid"></div>
-        <div class="av-load-more" id="avatarFranchiseMoreWrap"><button type="button" class="btn btn-ghost" id="avatarFranchiseMore">Load more franchises</button></div>
-        <div class="av-divider"></div>
-        <div id="avatarCharacterHeading" class="av-section-title" style="display:none"></div>
-        <div id="avatarCharacters"></div>
-        <div class="av-load-more" id="avatarCharacterMoreWrap" style="display:none"><button type="button" class="btn btn-ghost" id="avatarCharacterMore">Load more characters</button></div>
-        <div class="field" style="margin-top:20px"><span class="label">Avatar color</span><div class="swatches">${AV_COLORS.map((c, i) => `<button type="button" class="swatch ${i === color ? "on" : ""}" style="background:${c}" data-c="${i}" aria-label="Color ${i + 1}"></button>`).join("")}</div></div>
+        <button type="button" class="av-browse" id="avatarBrowse"><span class="av-browse-faces" aria-hidden="true">🧙🦸🧝🤖</span><span><b>Choose a character avatar</b><small>Harry Potter, Star Wars, Marvel, anime and more — or any show on TMDB</small></span>${icons.right}</button>
+        <div class="field"><span class="label">Or upload a photo</span><div class="av-tools">
+          <label class="btn btn-ghost av-upload">${icons.share} Upload photo<input type="file" id="avatarFile" accept="image/png,image/jpeg,image/webp,image/gif"></label>
+          <button type="button" class="btn btn-ghost" id="avatarRemove" ${photo || emoji ? "" : "disabled"}>Remove picture</button>
+        </div></div>
+        <div class="av-section-title">Or pick a classic</div><div class="av-grid">${presetGrid()}</div>
+        <div class="field"><span class="label">Avatar colour</span><div class="swatches">${AV_COLORS.map((c, i) => `<button type="button" class="swatch ${i === color ? "on" : ""}" style="background:${c}" data-c="${i}" aria-label="Colour ${i + 1}"></button>`).join("")}</div></div>
         <div class="modal-actions">
           ${existing && state.profiles.length > 1 ? `<button type="button" class="btn btn-ghost" id="pdel" style="margin-right:auto;color:#ff9b8a">Delete</button>` : ""}
           <button type="button" class="btn btn-ghost" data-close>Cancel</button>
@@ -1570,6 +1694,7 @@
       const refreshPreview = () => {
         preview.innerHTML = `${avatar(previewProfile())}<div><b id="avPreviewName">${esc(el.querySelector("#pname").value.trim() || "New profile")}</b><small class="fine" style="display:block;margin:3px 0 0">Profile picture preview</small></div>`;
         el.querySelectorAll("[data-avatar-emoji]").forEach(b => b.classList.toggle("on", b.dataset.avatarEmoji === emoji && !photo));
+        el.querySelector("#avatarRemove").disabled = !photo && !emoji;
       };
       el.querySelector("#pname").addEventListener("input", refreshPreview);
       el.querySelectorAll("[data-c]").forEach(b => b.onclick = () => {
@@ -1577,6 +1702,7 @@
       });
       el.querySelectorAll("[data-avatar-emoji]").forEach(b => b.onclick = () => { photo = null; emoji = b.dataset.avatarEmoji; refreshPreview(); });
       el.querySelector("#avatarRemove").onclick = () => { photo = null; emoji = null; refreshPreview(); };
+      el.querySelector("#avatarBrowse").onclick = () => openCharacterPicker((src, name) => { photo = src; emoji = null; refreshPreview(); toast(`${name || "Character"} selected`); });
       el.querySelector("#avatarFile").addEventListener("change", async e => {
         const file = e.target.files?.[0]; if (!file) return;
         if (!/^image\/(png|jpeg|webp|gif)$/.test(file.type) || file.size > 8 * 1024 * 1024) { toast("Choose a PNG, JPG, WEBP or GIF under 8 MB"); e.target.value = ""; return; }
@@ -1596,110 +1722,6 @@
           });
           photo = data; emoji = null; refreshPreview();
         } catch { toast("Couldn't read that image"); }
-      });
-      const status = el.querySelector("#avatarFranchiseStatus"), franchiseGrid = el.querySelector("#avatarFranchises"), characters = el.querySelector("#avatarCharacters");
-      const franchiseQuery = el.querySelector("#avatarFranchiseQ"), characterHeading = el.querySelector("#avatarCharacterHeading");
-      const characterMoreWrap = el.querySelector("#avatarCharacterMoreWrap"), characterMore = el.querySelector("#avatarCharacterMore");
-      const franchiseMoreWrap = el.querySelector("#avatarFranchiseMoreWrap");
-      const franchises = [
-        ["Harry Potter","harrypotter","Wizarding World","🪄"], ["Game of Thrones","gameofthrones","Westeros","🐉"],
-        ["House of the Dragon","gameofthrones","Westeros","🔥"], ["Star Wars","starwars","A galaxy far, far away","🚀"],
-        ["Marvel","marvel","Marvel Universe","✦"], ["DC Comics","dc","DC Universe","🦇"],
-        ["The Lord of the Rings","lotr","Middle-earth","💍"], ["The Hobbit","lotr","Middle-earth","🧙"],
-        ["Stranger Things","strangerthings","Hawkins","🚲"], ["The Walking Dead","walkingdead","The Walking Dead","🧟"],
-        ["Breaking Bad","breakingbad","Albuquerque","⚗️"], ["The Witcher","witcher","The Continent","⚔️"],
-        ["Friends","friends","Central Perk","☕"], ["The Office","theoffice","Dunder Mifflin","📎"],
-        ["Pokémon","pokemon","Pokémon world","⚡"], ["Avatar: The Last Airbender","avatar","Four Nations","🌊"],
-        ["SpongeBob SquarePants","spongebob","Bikini Bottom","🫧"], ["Dragon Ball","dragonball","Dragon World","🐉"],
-        ["Naruto","naruto","Hidden Villages","🍥"], ["One Piece","onepiece","Grand Line","🏴‍☠️"],
-        ["The Simpsons","simpsons","Springfield","🍩"], ["Rick and Morty","rickandmorty","Multiverse","🛸"],
-        ["Peaky Blinders","peakyblinders","Shelby family","🎩"], ["The Boys","theboys","Vought universe","⚡"],
-        ["Supernatural","supernatural","Hunters & monsters","👻"], ["The Big Bang Theory","bigbangtheory","Pasadena","🧪"],
-        ["Sailor Moon","sailormoon","Sailor Guardians","🌙"], ["Attack on Titan","attackontitan","Humanity vs Titans","⚔️"],
-        ["Demon Slayer","kimetsunoyaiba","Demon Slayer Corps","🌸"], ["My Hero Academia","myheroacademia","U.A. High","💥"],
-        ["The Hunger Games","thehungergames","Panem","🏹"], ["Twilight","twilightsaga","Forks","🌒"],
-        ["The Matrix","matrix","The Matrix","🕶️"], ["Jurassic Park","jurassicpark","Jurassic Park","🦖"]
-      ].map(([name,wiki,desc,icon])=>({name,wiki,desc,icon}));
-      let franchiseVisible = 12, activeFranchise = null, characterContinue = null, characterLoading = false, tmdbFranchiseMatches = [];
-      const resolveFranchise = title => {
-        const rules = [[/harry potter|wizarding world|fantastic beasts/i,"harrypotter"],[/game of thrones|house of the dragon|a song of ice and fire/i,"gameofthrones"],[/star wars|mandalorian|andor|ahsoka/i,"starwars"],[/marvel|avengers|spider-man|x-men|deadpool/i,"marvel"],[/batman|superman|wonder woman|dc comics|suicide squad/i,"dc"],[/lord of the rings|the hobbit|middle-earth/i,"lotr"],[/stranger things/i,"strangerthings"],[/walking dead/i,"walkingdead"],[/breaking bad|better call saul/i,"breakingbad"],[/witcher/i,"witcher"],[/pokemon/i,"pokemon"],[/avatar: the last airbender|legend of korra/i,"avatar"],[/spongebob/i,"spongebob"],[/dragon ball/i,"dragonball"],[/naruto/i,"naruto"],[/one piece/i,"onepiece"],[/simpsons/i,"simpsons"],[/rick and morty/i,"rickandmorty"],[/peaky blinders/i,"peakyblinders"],[/the boys/i,"theboys"],[/supernatural/i,"supernatural"],[/sailor moon/i,"sailormoon"],[/attack on titan/i,"attackontitan"],[/demon slayer/i,"kimetsunoyaiba"],[/my hero academia/i,"myheroacademia"],[/hunger games/i,"thehungergames"],[/twilight/i,"twilightsaga"],[/matrix/i,"matrix"],[/jurassic park/i,"jurassicpark"]];
-        const hit=rules.find(([re])=>re.test(title)); return hit ? franchises.find(f=>f.wiki===hit[1]) : franchises.find(f=>f.name.toLowerCase()===title.toLowerCase());
-      };
-      const renderFranchises = () => {
-        const q = franchiseQuery.value.trim().toLowerCase();
-        const filtered = franchises.filter(f => !q || `${f.name} ${f.desc}`.toLowerCase().includes(q));
-        const shown = q ? filtered : filtered.slice(0, franchiseVisible);
-        const tmdbCards = tmdbFranchiseMatches.map(m=>`<button type="button" class="av-franchise" data-franchise="${esc(m.franchise.name)}"><span class="av-franchise-icon">${m.poster?`<img src="${esc(m.poster)}" alt="" style="width:100%;height:100%;object-fit:cover;border-radius:8px">`:m.franchise.icon}</span><span><b>${esc(m.title)}</b><small>TMDB · ${esc(m.franchise.desc)}</small></span></button>`).join("");
-        franchiseGrid.innerHTML = tmdbCards + shown.map(f => `<button type="button" class="av-franchise ${activeFranchise?.name===f.name?"on":""}" data-franchise="${esc(f.name)}"><span class="av-franchise-icon">${f.icon}</span><span><b>${esc(f.name)}</b><small>${esc(f.desc)}</small></span></button>`).join("") || (tmdbCards ? "" : `<p class="fine">No connected franchise matches. Try another name or upload a photo.</p>`);
-        franchiseMoreWrap.style.display = !q && filtered.length > franchiseVisible ? "flex" : "none";
-      };
-      async function fetchFranchiseCharacters(loadMore=false) {
-        if (!activeFranchise || characterLoading) return;
-        characterLoading = true;
-        const wiki = activeFranchise.wiki;
-        status.textContent = loadMore ? `Loading more ${activeFranchise.name} characters…` : `Loading ${activeFranchise.name} characters…`;
-        characterMore.disabled = true;
-        try {
-          const params = new URLSearchParams({action:"query", generator:"categorymembers", gcmtitle:"Category:Characters", gcmtype:"page", gcmlimit:"50", prop:"pageimages|info", piprop:"thumbnail|original", pithumbsize:"320", inprop:"url", format:"json", origin:"*"});
-          if (loadMore && characterContinue) Object.entries(characterContinue).forEach(([k,v])=>params.set(k,v));
-          let response = await fetch(`https://${wiki}.fandom.com/api.php?${params}`, {headers:{accept:"application/json"}});
-          if (!response.ok) throw new Error(`HTTP ${response.status}`);
-          let data = await response.json();
-          let pages = Object.values(data.query?.pages || {}).filter(x=>x.thumbnail?.source || x.original?.source).sort((a,b)=>(a.index||999)-(b.index||999));
-          // Some wikis do not maintain a common Characters category. Fall back to the wiki's own search index.
-          if (!loadMore && !pages.length) {
-            const fallback = new URLSearchParams({action:"query",generator:"search",gsrsearch:"character",gsrnamespace:"0",gsrlimit:"50",prop:"pageimages|info",piprop:"thumbnail|original",pithumbsize:"320",inprop:"url",format:"json",origin:"*"});
-            response = await fetch(`https://${wiki}.fandom.com/api.php?${fallback}`, {headers:{accept:"application/json"}});
-            if (!response.ok) throw new Error(`HTTP ${response.status}`);
-            data = await response.json();
-            pages = Object.values(data.query?.pages || {}).filter(x=>x.thumbnail?.source || x.original?.source).sort((a,b)=>(a.index||999)-(b.index||999));
-          }
-          characterContinue = data.continue || null;
-          const cards = pages.map(page=>{
-            const src=page.thumbnail?.source || page.original?.source, title=page.title || "Character";
-            return `<button type="button" class="av-character" data-avatar-photo="${esc(src)}" data-avatar-character="${esc(title)}" title="${esc(title)}"><img src="${esc(src)}" alt="${esc(title)}" loading="lazy"><small>${esc(title.replace(/ \(.*?\)$/, ""))}</small></button>`;
-          }).join("");
-          if (!loadMore) characters.innerHTML = `<div class="av-character-grid">${cards}</div><p class="fine" style="margin-top:10px">Character portraits are provided by ${esc(wiki)}.fandom.com. Some franchise wikis may have limited image coverage.</p>`;
-          else { const grid=characters.querySelector(".av-character-grid"); if (grid) grid.insertAdjacentHTML("beforeend",cards); }
-          characterHeading.style.display="block"; characterHeading.textContent=activeFranchise.name;
-          status.textContent = pages.length ? `${pages.length} character portraits loaded${characterContinue?" · more available":""}. Select one to use it.` : `No character portraits were found in ${wiki}.fandom.com. Try another franchise or upload a photo.`;
-          characterMoreWrap.style.display=characterContinue && pages.length ? "flex" : "none";
-        } catch (err) {
-          status.textContent=`Couldn't load ${activeFranchise.name} from its character wiki. The wiki may be unavailable or block cross-site requests.`;
-          if (!loadMore) { characters.innerHTML=""; characterMoreWrap.style.display="none"; }
-        } finally { characterLoading=false; characterMore.disabled=false; }
-      }
-      franchiseGrid.addEventListener("click", e=>{
-        const b=e.target.closest("[data-franchise]"); if(!b)return;
-        activeFranchise=franchises.find(f=>f.name===b.dataset.franchise); characterContinue=null;
-        franchiseGrid.querySelectorAll(".av-franchise").forEach(x=>x.classList.toggle("on",x===b));
-        characters.innerHTML=""; characterHeading.style.display="none"; characterMoreWrap.style.display="none";
-        fetchFranchiseCharacters(false);
-      });
-      franchiseQuery.addEventListener("input",()=>{renderFranchises();});
-      el.querySelector("#avatarFranchiseSearchBtn").onclick=async()=>{
-        const q=franchiseQuery.value.trim(); tmdbFranchiseMatches=[];
-        if(!q){renderFranchises();return;}
-        renderFranchises();
-        if(!LIVE){status.textContent="Connect TMDB in config.js to search its movie and series catalog.";return;}
-        status.textContent="Searching TMDB for matching franchises…";
-        try{
-          const data=await tmdb("search/multi",{query:q});
-          const found=[];
-          for(const item of (data.results||[]).filter(x=>["movie","tv"].includes(x.media_type)).slice(0,15)){
-            const title=item.title||item.name||""; const franchise=resolveFranchise(title);
-            if(franchise && !found.some(x=>x.franchise.wiki===franchise.wiki)) found.push({title,franchise,poster:item.poster_path?`${IMG}w185${item.poster_path}`:null});
-          }
-          tmdbFranchiseMatches=found; renderFranchises();
-          status.textContent=found.length?`Found ${found.length} TMDB title match(es) with connected character wikis. Choose one to browse portraits.`:"No connected character wiki matched that TMDB search. Browse the featured franchises below.";
-        }catch{status.textContent="TMDB search failed. You can still browse the featured franchises below.";}
-      };
-      el.querySelector("#avatarFranchiseMore").onclick=()=>{franchiseVisible+=12;renderFranchises();};
-      characterMore.onclick=()=>fetchFranchiseCharacters(true);
-      renderFranchises();
-      characters.addEventListener("click", e => {
-        const b = e.target.closest("[data-avatar-photo]"); if (!b) return;
-        photo = b.dataset.avatarPhoto; emoji = null; refreshPreview(); toast(`${b.dataset.avatarCharacter || "Character"} selected`);
       });
       el.querySelector("#pdel")?.addEventListener("click", () => {
         state.profiles = state.profiles.filter(p => p.id !== existing.id);
@@ -1730,9 +1752,7 @@
   // ---------- router ----------
   const PUBLIC = [];
   let renderSeq = 0;
-  let watchProgressCleanup = null;
   async function render() {
-    if (watchProgressCleanup) { watchProgressCleanup(); watchProgressCleanup = null; }
     clearInterval(heroTimer); clearInterval(rotTimer); clipObserver?.disconnect(); lazyJobs.clear();
     const seq = ++renderSeq;
     document.documentElement.classList.toggle("perf", state.perf);
@@ -1762,7 +1782,6 @@
       case "search": inner = pageSearch(params); title = "Search"; break;
       case "account": inner = pageAccount(); title = "Account"; break;
       case "title": inner = pageTitle(parts[1]); break;
-      case "watch": inner = pageWatch(parts[1], params); title = "Watch"; break;
       case "genre": inner = pageGenre(parts[1] || ""); title = parts[1]; break;
       case "network": inner = pageNetwork(parts[1] || ""); title = "Network"; break;
       default: inner = notFound();
@@ -1786,7 +1805,6 @@
       mountHero(() => data.row((LIVE ? window.VESPERA_TMDB_ROWS : window.VESPERA_ROWS)[0]), "Tonight's pick");
       liveColls(document.getElementById("homeColls"));
     }
-    if (route === "watch") watchProgressCleanup = mountWatchProgress(parts[1], params);
     if (["movies", "series", "anime"].includes(route)) {
       if (document.getElementById("grid")) loadBrowse(false);
       else { const s = data.section(route); mountHero(() => data.load(s.hero), BROWSE[route].hero); }
@@ -1794,7 +1812,7 @@
     if (route === "constellations") {
       if (parts[1]) liveColls(document.getElementById("collPage"));
       else {
-        mountHero(() => data.row({ path: "trending/all/week" }), "Across every universe");
+        mountHero(constellationHeroItems, "Across every universe");
         const q = document.getElementById("constellationSearch");
         if (q) q.addEventListener("input", () => {
           const term = q.value.trim().toLowerCase();
@@ -1868,44 +1886,6 @@
     mountLazy();
   }
 
-  function mountWatchProgress(key, params) {
-    const page = document.getElementById("watchPage");
-    const frame = document.getElementById("watchFrame");
-    if (!page) return null;
-    const type = page.dataset.watchType;
-    const id = page.dataset.watchId;
-    const season = page.dataset.watchSeason;
-    const episode = page.dataset.watchEpisode;
-    const t = items.get(key) || {};
-    const title = t.title || "Untitled";
-    const watchedItem = {
-      key, id: String(id), type, title, name: title,
-      poster: t.poster || null, backdrop: t.backdrop || null,
-      timestamp: 0, duration: 0, progress: 0,
-      ...(type === "tv" ? { season: Number(season) || 1, episode: Number(episode) || 1 } : {})
-    };
-    const handlePlayerMessage = event => {
-      let message = event.data;
-      if (typeof message === "string") { try { message = JSON.parse(message); } catch { return; } }
-      if (!message || typeof message !== "object") return;
-      if (message.type && message.type !== "PLAYER_EVENT") return;
-      let data = message.data ?? message;
-      if (typeof data === "string") { try { data = JSON.parse(data); } catch { return; } }
-      if (!data || typeof data !== "object") return;
-      const timestamp = Number(data.player_progress ?? data.timestamp ?? data.currentTime ?? data.position ?? data.seconds ?? data.time);
-      const duration = Number(data.player_duration ?? data.duration ?? data.totalDuration);
-      if (!Number.isFinite(timestamp) || !Number.isFinite(duration) || duration <= 0 || timestamp < 0) return;
-      const fraction = Math.min(1, Math.max(0, timestamp / duration));
-      const item = { ...watchedItem, timestamp, duration, progress: fraction };
-      if (fraction >= .95) { removeWatchProgress(item); return; }
-      if (timestamp < WATCH_PROGRESS_MIN_SECONDS) return;
-      saveWatchProgress(item);
-    };
-    window.addEventListener("message", handlePlayerMessage);
-
-    return () => window.removeEventListener("message", handlePlayerMessage);
-  }
-
   // ---------- global events ----------
   function closeMenus() {
     document.getElementById("pmenu")?.classList.remove("open");
@@ -1926,30 +1906,12 @@
     location.hash = location.hash.split("?")[0] + (p.toString() ? "?" + p : "");
   };
 
-  function refreshContinueWatching() {
-    const mount = document.getElementById("continueWatchingMount");
-    if (!mount) return;
-    const wasManaging = Boolean(mount.querySelector("#continueWatching.cw-managing"));
-    mount.innerHTML = continueWatchingSection();
-    if (wasManaging) {
-      const section = mount.querySelector("#continueWatching");
-      const button = section?.querySelector("[data-action=continue-manage]");
-      const clear = section?.querySelector("[data-action=continue-clear]");
-      section?.classList.add("cw-managing");
-      button?.setAttribute("aria-pressed", "true");
-      if (button) button.textContent = "Done";
-      if (clear) clear.hidden = false;
-    }
-  }
-  window.addEventListener("vespera-watch-progress", refreshContinueWatching);
-  window.addEventListener("storage", e => { if (e.key === WATCH_PROGRESS_KEY) refreshContinueWatching(); });
-
   document.addEventListener("click", e => {
     const t = e.target;
     const moreInfo = t.closest("[data-preview-more]");
     if (moreInfo) { e.preventDefault(); moreInfo.closest(".modal-back")?.remove(); location.hash = moreInfo.getAttribute("href"); return; }
     const preview = t.closest("[data-preview]");
-    if (preview && !t.closest("[data-save]")) { e.preventDefault(); e.stopPropagation(); preview.closest(".modal-back")?.remove(); openTitlePreview(preview.dataset.preview); return; }
+    if (preview && !t.closest("[data-save], [data-action], [data-preview-more]")) { e.preventDefault(); e.stopPropagation(); preview.closest(".modal-back")?.remove(); openTitlePreview(preview.dataset.preview); return; }
     const save = t.closest("[data-save]");
     if (save) {
       e.preventDefault(); e.stopPropagation();
@@ -2012,70 +1974,10 @@
       if (a === "clip-next") clipStep(1);
       if (a === "expand") { const p = act.previousElementSibling; p.classList.toggle("clamp"); act.textContent = p.classList.contains("clamp") ? "Read more" : "Show less"; }
       if (a === "jump") { e.preventDefault(); document.getElementById("providers")?.scrollIntoView({ behavior: "smooth" }); }
-      if (a === "continue-manage") {
-        const section = document.getElementById("continueWatching");
-        if (section) {
-          const managing = !section.classList.contains("cw-managing");
-          section.classList.toggle("cw-managing", managing);
-          act.setAttribute("aria-pressed", String(managing));
-          act.textContent = managing ? "Done" : "Manage";
-          const clear = section.querySelector(".cw-clear"); if (clear) clear.hidden = !managing;
-        }
-      }
-      if (a === "continue-remove") {
-        const item = readWatchProgress().find(x => progressKey(x) === act.dataset.progressKey);
-        if (item) removeWatchProgress(item);
-      }
-      if (a === "continue-clear") {
-        try { localStorage.removeItem(WATCH_PROGRESS_KEY); } catch {}
-        window.dispatchEvent(new Event("vespera-watch-progress"));
-      }
-      if (a === "watch-resume-server") {
-        const frame = document.getElementById("watchFrame");
-        if (frame && act.dataset.url) frame.src = act.dataset.url;
-        const fullscreenButton = document.querySelector(".watch-fullscreen");
-        const resumeProvider = document.querySelector(`.watch-server[data-provider="${CSS.escape(act.dataset.provider || "")}"]`);
-        if (fullscreenButton) fullscreenButton.hidden = !isFrameXTVProvider(act.dataset.provider, resumeProvider?.dataset.providerName);
-        document.querySelectorAll(".watch-server").forEach(b => {
-          const selected = b.dataset.provider === act.dataset.provider;
-          b.classList.toggle("btn-primary", selected); b.classList.toggle("btn-ghost", !selected);
-          b.setAttribute("aria-pressed", String(selected));
-        });
-      }
-      if (a === "watch-start-over") {
-        const frame = document.getElementById("watchFrame");
-        const server = document.querySelector('.watch-server[aria-pressed="true"]');
-        const url = server?.dataset.startUrl || act.dataset.url;
-        if (frame && url) frame.src = url;
-        document.getElementById("watchResume")?.remove();
-      }
-      if (a === "watch-server") {
-        const frame = document.getElementById("watchFrame");
-        if (frame && act.dataset.url) frame.src = act.dataset.url;
-        const fullscreenButton = document.querySelector(".watch-fullscreen");
-        if (fullscreenButton) fullscreenButton.hidden = !isFrameXTVProvider(act.dataset.provider, act.dataset.providerName);
-        document.querySelectorAll(".watch-server").forEach(b => {
-          const selected = b === act;
-          b.classList.toggle("btn-primary", selected);
-          b.classList.toggle("btn-ghost", !selected);
-          b.setAttribute("aria-pressed", String(selected));
-        });
-      }
-      if (a === "watch-fullscreen") {
-        const player = document.getElementById("watchPlayer");
-        const request = player?.requestFullscreen || player?.webkitRequestFullscreen;
-        if (document.fullscreenElement) {
-          (document.exitFullscreen || document.webkitExitFullscreen)?.call(document)?.catch?.(() => {});
-        } else if (request) {
-          try { const result = request.call(player); result?.catch?.(() => {}); } catch (err) { console.warn("Fullscreen is unavailable in this browser", err); }
-        } else {
-          toast("Use the player’s own fullscreen control on this browser");
-        }
-      }
       if (a === "episode-ratings") {
         detail(act.dataset.key).then(title => { if (title?.tmdbId) openEpisodeRatings(title); }).catch(() => toast("Couldn't load series details"));
       }
-      if (a === "privacy") modal(`<h2>Privacy</h2><p>Vespera stores your profiles, lists, settings and watch progress in this browser. Use Settings → Export backup to move them to another device. Title data and images come from TMDB${FEAT.omdb ? " and OMDb" : ""}; trailers are embedded from YouTube.</p><div class="modal-actions"><button class="btn btn-primary" data-close>Got it</button></div>`);
+      if (a === "privacy") modal(`<h2>Privacy</h2><p>Vespera stores your profiles, lists and settings in this browser. Use Settings → Export backup to move them to another device. Title data and images come from TMDB${FEAT.omdb ? " and OMDb" : ""}; trailers are embedded from YouTube.</p><div class="modal-actions"><button class="btn btn-primary" data-close>Got it</button></div>`);
       if (a === "trailer") { document.querySelectorAll(".bg-video iframe").forEach(f => ytCmd(f, "pauseVideo"));
         modal(`<div class="video"><iframe src="${ytSrc(act.dataset.yt).replace("mute=1", "mute=0")}" title="Trailer" allow="autoplay; encrypted-media; picture-in-picture; fullscreen" allowfullscreen></iframe></div>`, null, "modal-video"); }
       if (a === "share") { const url = location.href.split("#")[0] + "#/title/" + act.dataset.id;

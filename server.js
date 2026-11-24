@@ -187,7 +187,8 @@ async function proxyOmdb(req, res, query) {
   if (!FEATURES.omdb) return json(res, 503, { error: "omdb_not_configured" });
   const id = query.get("i") || "";
   if (!/^tt\d{5,10}$/.test(id)) return json(res, 400, { error: "bad_id" });
-  const r = await cachedFetch(`https://www.omdbapi.com/?i=${id}&apikey=${encodeURIComponent(env.OMDB_KEY)}`);
+  const season = /^\d{1,3}$/.test(query.get("Season") || "") ? `&Season=${query.get("Season")}` : "";
+  const r = await cachedFetch(`https://www.omdbapi.com/?i=${id}${season}&apikey=${encodeURIComponent(env.OMDB_KEY)}`);
   send(res, r.status, r.body, "application/json; charset=utf-8", { "Cache-Control": "private, max-age=3600" });
 }
 
