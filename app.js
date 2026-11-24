@@ -1472,11 +1472,13 @@
         </div><p class="fine" style="margin-top:7px">Choose an image from your device. Images are resized before saving.</p></div>
         <div class="av-section-title">Default avatars</div><div class="av-grid">${presetGrid()}</div>
         <div class="av-divider"></div>
-        <div class="av-section-title">Characters from movies and shows</div>
-        <p class="fine">Search a movie or series, then browse portraits listed on character articles — not actor cast profiles.</p>
-        <div class="av-search"><input class="input" id="avatarSearchQ" placeholder="Search a movie or show…" aria-label="Search a movie or show"><button class="btn btn-ghost" type="button" id="avatarSearchBtn">Search</button></div>
-        <div id="avatarSearchStatus" class="av-status">${LIVE ? "Search for a movie or series to find its fictional characters." : "Connect TMDB in config.js to search movie and series titles."}</div>
+        <div class="av-section-title">Movie &amp; series characters</div>
+        <p class="fine">Choose a movie or series, then browse images from its character wiki. These are character-page images, not TMDB actor headshots.</p>
+        <div class="av-search"><input class="input" id="avatarSearchQ" placeholder="Search a movie or show…" aria-label="Search a movie or show"><button class="btn btn-ghost" type="button" id="avatarSearchBtn">Search titles</button></div>
+        <div id="avatarSearchStatus" class="av-status">${LIVE ? "Search a title to find its character wiki." : "Connect TMDB in config.js to search titles."}</div>
         <div id="avatarSearchResults" class="av-results"></div>
+        <div class="field" style="margin-top:12px"><label class="label" for="avatarWikiDomain">Character wiki</label><input class="input" id="avatarWikiDomain" placeholder="Fandom wiki subdomain, e.g. harrypotter"><small class="fine">Auto-filled for supported franchises. You can change it if needed.</small></div>
+        <div class="av-search"><input class="input" id="avatarCharacterQ" placeholder="Character name (e.g. Hermione Granger)" aria-label="Search character name"><button class="btn btn-primary" type="button" id="avatarCharacterSearchBtn">Find characters</button></div>
         <div id="avatarCharacters"></div>
         <div class="field" style="margin-top:20px"><span class="label">Avatar color</span><div class="swatches">${AV_COLORS.map((c, i) => `<button type="button" class="swatch ${i === color ? "on" : ""}" style="background:${c}" data-c="${i}" aria-label="Color ${i + 1}"></button>`).join("")}</div></div>
         <div class="modal-actions">
@@ -1518,82 +1520,79 @@
         } catch { toast("Couldn't read that image"); }
       });
       const status = el.querySelector("#avatarSearchStatus"), results = el.querySelector("#avatarSearchResults"), characters = el.querySelector("#avatarCharacters");
+      const wikiInput = el.querySelector("#avatarWikiDomain"), characterInput = el.querySelector("#avatarCharacterQ");
+      const wikiAliases = [
+        [/harry potter|wizarding world|fantastic beasts/i, "harrypotter"],
+        [/game of thrones|house of the dragon|a song of ice and fire/i, "gameofthrones"],
+        [/star wars|mandalorian|andor|ahsoka/i, "starwars"],
+        [/marvel|avengers|spider-man|x-men|deadpool/i, "marvel"],
+        [/batman|superman|wonder woman|dc comics|suicide squad/i, "dc"],
+        [/lord of the rings|the hobbit|middle-earth/i, "lotr"],
+        [/stranger things/i, "strangerthings"],
+        [/the walking dead/i, "walkingdead"],
+        [/breaking bad|better call saul/i, "breakingbad"],
+        [/the witcher/i, "witcher"],
+        [/friends/i, "friends"],
+        [/the office/i, "theoffice"],
+        [/pokemon/i, "pokemon"],
+        [/avatar: the last airbender|the legend of korra/i, "avatar"],
+        [/spongebob/i, "spongebob"],
+        [/dragon ball/i, "dragonball"],
+        [/naruto/i, "naruto"],
+        [/one piece/i, "onepiece"],
+        [/minecraft/i, "minecraft"],
+        [/fortnite/i, "fortnite"]
+      ];
+      const wikiForTitle = title => wikiAliases.find(([re]) => re.test(title))?.[1] || title.toLowerCase().replace(/[^a-z0-9]+/g, "").slice(0, 48);
       async function searchTitles() {
         const q = el.querySelector("#avatarSearchQ").value.trim(); if (!q) { status.textContent = "Enter a movie or show title to search."; return; }
-        if (!LIVE) { status.textContent = "Connect TMDB in config.js to search movie and series titles."; return; }
-        status.textContent = "Searching TMDB…"; results.innerHTML = ""; characters.innerHTML = "";
+        if (!LIVE) { status.textContent = "Connect TMDB in config.js to search titles."; return; }
+        status.textContent = "Searching titles…"; results.innerHTML = ""; characters.innerHTML = "";
         try {
           const data = await tmdb("search/multi", { query: q });
           const matches = (data.results || []).filter(x => ["movie", "tv"].includes(x.media_type)).slice(0, 8);
-          status.textContent = matches.length ? "Choose a title to browse its fictional characters." : "No matching movies or shows found.";
-          results.innerHTML = matches.map(x => `<button type="button" class="av-show" data-avatar-title="${x.media_type}" data-avatar-id="${x.id}">${x.poster_path ? `<img src="${IMG}w185${esc(x.poster_path)}" alt="">` : `<span style="display:grid;place-items:center;aspect-ratio:2/3;background:var(--panel)">✦</span>`}<b>${esc(x.title || x.name || "Untitled")}</b></button>`).join("");
+          status.textContent = matches.length ? "Choose the franchise you want to browse." : "No matching movies or shows found.";
+          results.innerHTML = matches.map(x => `<button type="button" class="av-show" data-avatar-title="${esc(x.title || x.name || "Untitled")}">${x.poster_path ? `<img src="${IMG}w185${esc(x.poster_path)}" alt="">` : `<span style="display:grid;place-items:center;aspect-ratio:2/3;background:var(--panel)">✦</span>`}<b>${esc(x.title || x.name || "Untitled")}</b></button>`).join("");
         } catch { status.textContent = "Couldn't search TMDB. Check your connection and try again."; }
+      }
+      async function searchCharacterPages() {
+        const wiki = wikiInput.value.trim().toLowerCase().replace(/^https?:\/\//, "").replace(/\.fandom\.com.*$/, "").replace(/[^a-z0-9-]/g, "");
+        const q = characterInput.value.trim();
+        if (!wiki) { status.textContent = "Choose a title or enter its Fandom wiki subdomain first."; return; }
+        if (!q) { status.textContent = "Enter a character name to search."; return; }
+        status.textContent = `Searching ${wiki}.fandom.com for character pages…`; characters.innerHTML = "";
+        try {
+          const params = new URLSearchParams({ action: "query", generator: "search", gsrsearch: q, gsrnamespace: "0", gsrlimit: "30", prop: "pageimages|info", piprop: "thumbnail|original", pithumbsize: "320", inprop: "url", format: "json", origin: "*" });
+          const response = await fetch(`https://${wiki}.fandom.com/api.php?${params.toString()}`, { headers: { accept: "application/json" } });
+          if (!response.ok) throw new Error(`HTTP ${response.status}`);
+          const data = await response.json();
+          const pages = Object.values(data.query?.pages || {}).filter(x => x.thumbnail?.source || x.original?.source).sort((a,b) => (a.index || 999) - (b.index || 999));
+          if (!pages.length) { status.textContent = `No illustrated character pages found on ${wiki}.fandom.com. Try another character name or wiki.`; return; }
+          status.textContent = `Found ${pages.length} illustrated wiki pages. Choose the character image you want.`;
+          characters.innerHTML = `<div class="av-character-grid">${pages.map(page => {
+            const src = page.thumbnail?.source || page.original?.source;
+            const title = page.title || "Character";
+            return `<button type="button" class="av-character" data-avatar-photo="${esc(src)}" data-avatar-character="${esc(title)}" title="${esc(title)}"><img src="${esc(src)}" alt="${esc(title)}" loading="lazy"><small>${esc(title.replace(/ \(.*?\)$/, ""))}</small></button>`;
+          }).join("")}</div><p class="fine" style="margin-top:10px">Images are supplied by the selected fan wiki; availability and image rights vary by page.</p>`;
+        } catch (err) {
+          status.textContent = `Couldn't reach ${wiki}.fandom.com. Check the wiki name, or upload your own image instead.`;
+        }
       }
       el.querySelector("#avatarSearchBtn").onclick = searchTitles;
       el.querySelector("#avatarSearchQ").addEventListener("keydown", e => { if (e.key === "Enter") { e.preventDefault(); searchTitles(); } });
-      results.addEventListener("click", async e => {
+      results.addEventListener("click", e => {
         const b = e.target.closest("[data-avatar-title]"); if (!b) return;
-        const title = b.querySelector("b")?.textContent?.trim() || "";
-        status.textContent = `Finding characters from ${title}…`; characters.innerHTML = "";
-        try {
-          // Wikipedia's page search returns the lead image for the article itself.
-          // Searching character articles avoids using TMDB's actor/cast headshots.
-          const queries = [`${title} fictional characters`, `${title} character`];
-          const responses = await Promise.all(queries.map(q => fetch(`https://en.wikipedia.org/w/rest.php/v1/search/page?q=${encodeURIComponent(q)}&limit=30`, { headers: { Accept: "application/json" } }).then(r => { if (!r.ok) throw new Error("Wikipedia search failed"); return r.json(); })));
-          const seen = new Set(), candidates = [];
-          for (const response of responses) for (const page of (response.pages || [])) {
-            const label = page.title || "";
-            const desc = page.description || "";
-            const excerpt = (page.excerpt || "").replace(/<[^>]*>/g, " ");
-            const key = label.toLowerCase();
-            if (seen.has(key) || label.toLowerCase() === title.toLowerCase()) continue;
-            // Search result metadata identifies fictional-character articles; the summary endpoint
-            // supplies their actual lead image even when search thumbnails are omitted.
-            const relevant = /character|fictional|protagonist|antagonist|superhero|villain|wizard|witch|creature/i.test(`${label} ${desc} ${excerpt}`);
-            if (!relevant) continue;
-            seen.add(key); candidates.push({ title: label, key: page.key || label, description: desc });
-          }
-          const summaries = await Promise.allSettled(candidates.slice(0, 24).map(async candidate => {
-            const r = await fetch(`https://en.wikipedia.org/api/rest_v1/page/summary/${encodeURIComponent(candidate.key)}`, { headers: { Accept: "application/json" } });
-            if (!r.ok) return null;
-            const summary = await r.json();
-            const description = summary.description || candidate.description || "";
-            if (!summary.thumbnail?.source || !/character|fictional|protagonist|antagonist|superhero|villain|wizard|witch|creature/i.test(`${candidate.title} ${description}`)) return null;
-            return { title: candidate.title, description, image: summary.thumbnail.source };
-          }));
-          const chosen = summaries.filter(x => x.status === "fulfilled" && x.value).map(x => x.value).slice(0, 36);
-          status.textContent = chosen.length ? `Choose a character image from ${title}. Images are sourced from character-related Wikipedia articles.` : `No character portraits found for ${title}. Try searching a specific character name below.`;
-          characters.innerHTML = `<div class="av-search" style="margin-top:14px"><input class="input" id="avatarCharacterRefine" placeholder="Search a character name…" aria-label="Search a character name"><button class="btn btn-ghost" type="button" id="avatarCharacterRefineBtn">Find</button></div><div class="av-character-grid" id="avatarCharacterGrid">${chosen.map(c => `<button type="button" class="av-character" data-avatar-photo="${esc(c.image)}" title="${esc(c.description || c.title)}"><img src="${esc(c.image)}" alt="${esc(c.title)}" loading="lazy"><small>${esc(c.title)}</small></button>`).join("")}</div>`;
-          const runRefine = async () => {
-            const term = el.querySelector("#avatarCharacterRefine")?.value.trim(); if (!term) return;
-            const grid = el.querySelector("#avatarCharacterGrid"); if (!grid) return;
-            status.textContent = `Searching for ${term}…`;
-            try {
-              const q = `${term} ${title} fictional character`;
-              const r = await fetch(`https://en.wikipedia.org/w/rest.php/v1/search/page?q=${encodeURIComponent(q)}&limit=20`, { headers: { Accept: "application/json" } });
-              if (!r.ok) throw new Error("Search failed");
-              const data = await r.json();
-              const candidates = (data.pages || []).filter(x => /character|fictional|protagonist|antagonist|superhero|villain|wizard|witch|creature/i.test(`${x.title || ""} ${x.description || ""} ${(x.excerpt || "").replace(/<[^>]*>/g, " ")}`)).slice(0, 16);
-              const summaries = await Promise.allSettled(candidates.map(async x => {
-                const pageKey = x.key || x.title;
-                const sr = await fetch(`https://en.wikipedia.org/api/rest_v1/page/summary/${encodeURIComponent(pageKey)}`, { headers: { Accept: "application/json" } });
-                if (!sr.ok) return null;
-                const summary = await sr.json();
-                if (!summary.thumbnail?.source) return null;
-                return { title: x.title, description: summary.description || x.description || "", image: summary.thumbnail.source };
-              }));
-              const found = summaries.filter(x => x.status === "fulfilled" && x.value).map(x => x.value);
-              status.textContent = found.length ? `Character results for ${term}.` : `No character article images found for ${term}. Try another spelling.`;
-              grid.innerHTML = found.map(x => `<button type="button" class="av-character" data-avatar-photo="${esc(x.image)}" title="${esc(x.description || x.title)}"><img src="${esc(x.image)}" alt="${esc(x.title)}" loading="lazy"><small>${esc(x.title)}</small></button>`).join("");
-            } catch { status.textContent = "Couldn't search character articles. Please try again."; }
-          };
-          el.querySelector("#avatarCharacterRefineBtn")?.addEventListener("click", runRefine);
-          el.querySelector("#avatarCharacterRefine")?.addEventListener("keydown", ev => { if (ev.key === "Enter") { ev.preventDefault(); runRefine(); } });
-        } catch { status.textContent = "Couldn't retrieve character images. Please try again."; }
+        const title = b.dataset.avatarTitle;
+        wikiInput.value = wikiForTitle(title);
+        characterInput.value = "";
+        characters.innerHTML = "";
+        status.textContent = `Character wiki set to ${wikiInput.value}. Enter a character name below. If this isn't the right wiki, edit the subdomain.`;
       });
+      el.querySelector("#avatarCharacterSearchBtn").onclick = searchCharacterPages;
+      characterInput.addEventListener("keydown", e => { if (e.key === "Enter") { e.preventDefault(); searchCharacterPages(); } });
       characters.addEventListener("click", e => {
         const b = e.target.closest("[data-avatar-photo]"); if (!b) return;
-        photo = b.dataset.avatarPhoto; emoji = null; refreshPreview(); toast("Character image selected");
+        photo = b.dataset.avatarPhoto; emoji = null; refreshPreview(); toast(`${b.dataset.avatarCharacter || "Character"} selected`);
       });
       el.querySelector("#pdel")?.addEventListener("click", () => {
         state.profiles = state.profiles.filter(p => p.id !== existing.id);
