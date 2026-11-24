@@ -109,7 +109,7 @@
     </section>
     <style>
       .cw-head-actions{display:flex;align-items:center;gap:8px}.cw-manage,.cw-clear{border:1px solid var(--line);background:var(--panel,var(--line));color:var(--muted);border-radius:999px;padding:7px 12px;font:inherit;font-size:12px;cursor:pointer}.cw-manage[aria-pressed="true"]{color:var(--text);border-color:var(--accent)}.cw-clear{color:var(--muted)}
-      .cw-row-wrap{overflow-x:auto;scrollbar-width:thin;padding:2px 0 10px}.cw-row{display:grid;grid-auto-flow:column;grid-auto-columns:minmax(210px,24%);gap:14px;min-width:0}
+      .cw-row-wrap{overflow-x:auto;scrollbar-width:thin;padding:0 var(--gutter)}.cw-row{display:grid;grid-auto-flow:column;grid-auto-columns:minmax(210px,24%);gap:14px;min-width:0}
       .cw-card{position:relative;min-width:0;border:1px solid var(--line);border-radius:12px;overflow:hidden;background:var(--panel)}.cw-poster{position:relative;display:block;aspect-ratio:16/9;background:var(--panel,var(--line));overflow:hidden}.cw-poster img{width:100%;height:100%;display:block;object-fit:cover;transition:transform .35s}.cw-card:hover .cw-poster img{transform:scale(1.04)}.cw-placeholder{height:100%;display:grid;place-items:center;color:var(--muted);font-size:12px;letter-spacing:.18em}.cw-play{position:absolute;inset:0;display:grid;place-items:center;color:white;background:linear-gradient(0deg,rgba(0,0,0,.34),rgba(0,0,0,.06));opacity:0;transition:opacity .2s}.cw-card:hover .cw-play{opacity:1}.cw-play svg{width:42px;height:42px;padding:11px;border-radius:50%;background:rgba(0,0,0,.62)}.cw-progress{position:absolute;bottom:0;left:0;right:0;height:4px;background:rgba(255,255,255,.28)}.cw-progress i{display:block;height:100%;background:var(--accent);box-shadow:0 0 8px color-mix(in srgb,var(--accent) 55%,transparent)}
       .cw-meta{display:grid;grid-template-columns:1fr auto;gap:5px 8px;padding:10px 11px 11px}.cw-title{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:var(--text);font-weight:650;font-size:13px;text-decoration:none}.cw-episode{color:var(--muted);font-size:11px}.cw-time{grid-column:1/-1;color:var(--muted);font-size:11px}.cw-remove{display:none;position:absolute;top:8px;right:8px;width:27px;height:27px;border:1px solid rgba(255,255,255,.25);border-radius:50%;background:rgba(8,10,14,.82);color:#fff;font-size:20px;line-height:1;cursor:pointer}.cw-section.cw-managing .cw-remove{display:block}.cw-section.cw-managing .cw-poster{filter:saturate(.8)}
       @media(max-width:700px){.cw-row{grid-auto-columns:minmax(190px,68%);gap:11px}.cw-title{font-size:12px}}
@@ -466,6 +466,12 @@
 
   // ---------- profiles / lists ----------
   const AV_COLORS = ["#f4b860", "#ff8a5c", "#9b87f5", "#5cc8ff", "#6fd39a", "#ff6fa8", "#e8e3d8"];
+  const AV_PRESETS = ["🦊", "🐼", "🐸", "🐯", "🐱", "🐙", "🐧", "🦉", "🐻", "🐲", "🐨", "🦄", "🐺", "🐰"];
+  // Profile avatars are stored with profile data so they follow the profile on supported sync.
+  const avatarStyle = document.getElementById("vespera-avatar-style") || document.createElement("style");
+  avatarStyle.id = "vespera-avatar-style";
+  avatarStyle.textContent = `.avatar{overflow:hidden;display:inline-grid;place-items:center;flex:0 0 auto}.avatar img{width:100%;height:100%;object-fit:cover;display:block;border-radius:inherit}.avatar-emoji{font-size:1.45em;line-height:1}.modal.avatar-modal{width:min(800px,calc(100vw - 28px));max-height:90vh;overflow:auto}.avatar-picker{width:100%;max-height:unset;overflow:visible}.av-preview{display:flex;align-items:center;gap:14px;margin:18px 0;padding:14px;border:1px solid var(--line);border-radius:14px;background:var(--panel)}.av-preview .avatar{width:64px;height:64px;font-size:24px}.av-tools{display:flex;flex-wrap:wrap;gap:9px}.av-upload{position:relative;display:inline-flex;align-items:center;gap:8px}.av-upload input{position:absolute;inset:0;width:100%;height:100%;opacity:0;cursor:pointer}.av-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(66px,1fr));gap:12px;margin:12px 0 20px}.av-choice{border:1px solid transparent;border-radius:13px;background:var(--panel);color:var(--text);padding:7px;cursor:pointer;display:grid;justify-items:center;gap:5px;min-width:0}.av-choice:hover,.av-choice.on{border-color:var(--accent);background:color-mix(in srgb,var(--accent) 12%,var(--panel))}.av-choice img{width:58px;height:58px;border-radius:50%;object-fit:cover;background:#17151d}.av-choice .av-emoji{width:58px;height:58px;border-radius:50%;display:grid;place-items:center;font-size:30px}.av-choice small{font-size:10px;color:var(--muted);max-width:100%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.av-section-title{font-size:13px;font-weight:700;margin:20px 0 8px}.av-search{display:flex;gap:8px;margin:10px 0}.av-search .input{flex:1;min-width:0}.av-results{display:grid;grid-template-columns:repeat(auto-fill,minmax(88px,1fr));gap:10px}.av-status{color:var(--muted);font-size:12px;margin:8px 0}.av-show{border:1px solid var(--line);background:var(--panel);color:var(--text);border-radius:10px;padding:8px;cursor:pointer;text-align:left}.av-show img{width:100%;aspect-ratio:2/3;object-fit:cover;border-radius:7px}.av-show b{display:block;font-size:11px;margin-top:5px}.av-character-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(70px,1fr));gap:10px}.av-character{border:1px solid transparent;border-radius:12px;background:var(--panel);padding:6px;color:var(--text);cursor:pointer}.av-character img{width:58px;height:58px;object-fit:cover;border-radius:50%;display:block;margin:auto}.av-character small{display:block;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:10px;margin-top:5px}.av-divider{height:1px;background:var(--line);margin:18px 0}@media(max-width:560px){.avatar-picker{padding:18px}.av-grid{grid-template-columns:repeat(4,minmax(0,1fr))}}`;
+  if (!avatarStyle.parentNode) document.head.appendChild(avatarStyle);
   const snap = it => ({ key: it.key, title: it.title, year: it.year, date: it.date, type: it.type, kind: it.kind, format: it.format, genres: it.genres,
     poster: it.poster, backdrop: it.backdrop, synopsis: it.synopsis, tmdbId: it.tmdbId, local: it.local, vote: it.vote, added: it.added });
   const state = {
@@ -579,7 +585,7 @@
     google: '<svg class="g-icon" viewBox="0 0 48 48"><path fill="#FFC107" d="M43.6 20.5H42V20H24v8h11.3C33.7 32.7 29.2 36 24 36c-6.6 0-12-5.4-12-12s5.4-12 12-12c3.1 0 5.8 1.2 7.9 3.1l5.7-5.7C34 6.1 29.3 4 24 4 12.9 4 4 12.9 4 24s8.9 20 20 20 20-8.9 20-20c0-1.3-.1-2.4-.4-3.5z"/><path fill="#FF3D00" d="M6.3 14.7l6.6 4.8C14.7 15.1 19 12 24 12c3.1 0 5.8 1.2 7.9 3.1l5.7-5.7C34 6.1 29.3 4 24 4 16.3 4 9.7 8.3 6.3 14.7z"/><path fill="#4CAF50" d="M24 44c5.2 0 9.9-2 13.4-5.2l-6.2-5.2C29.2 35.1 26.7 36 24 36c-5.2 0-9.6-3.3-11.3-8l-6.5 5C9.5 39.6 16.2 44 24 44z"/><path fill="#1976D2" d="M43.6 20.5H42V20H24v8h11.3c-.8 2.2-2.2 4.2-4.1 5.6l6.2 5.2C37 39.2 44 34 44 24c0-1.3-.1-2.4-.4-3.5z"/></svg>',
   };
 
-  const avatar = (p, cls = "") => p ? `<span class="avatar ${cls}" style="background:${AV_COLORS[p.color % AV_COLORS.length]}" aria-hidden="true">${esc((p.name || "?")[0].toUpperCase())}</span>` : "";
+  const avatar = (p, cls = "") => p ? `<span class="avatar ${cls}" style="background:${AV_COLORS[(p.color || 0) % AV_COLORS.length]}" aria-hidden="true">${p.avatar ? `<img src="${esc(p.avatar)}" alt="">` : p.avatarEmoji ? `<span class="avatar-emoji">${esc(p.avatarEmoji)}</span>` : esc((p.name || "?")[0].toUpperCase())}</span>` : "";
   function toast(msg) {
     const el = document.getElementById("toast");
     el.textContent = msg; el.classList.add("show");
@@ -706,7 +712,7 @@
       </nav>
       <div class="top-right">
         <button class="avatar" id="avatarBtn" aria-haspopup="menu" aria-expanded="false" aria-label="Profile menu"
-          style="background:${AV_COLORS[(p?.color || 0) % AV_COLORS.length]}">${esc((p?.name || "?")[0].toUpperCase())}</button>
+          style="background:${AV_COLORS[(p?.color || 0) % AV_COLORS.length]}">${p?.avatar ? `<img src="${esc(p.avatar)}" alt="">` : p?.avatarEmoji ? `<span class="avatar-emoji">${esc(p.avatarEmoji)}</span>` : esc((p?.name || "?")[0].toUpperCase())}</button>
         <div class="pmenu" id="pmenu" role="menu">
           <div class="pmenu-current">${avatar(p)}<div><b>${esc(p?.name)}</b><small>Browsing now</small></div></div>
           <div class="pmenu-profiles">
@@ -1449,19 +1455,96 @@
   }
   function profileModal(existing) {
     let color = existing ? existing.color : state.profiles.length % AV_COLORS.length;
-    modal(`<h2>${existing ? "Edit profile" : "Add a profile"}</h2>
-      <p>${existing ? "Change the name or color." : "Each profile gets its own list and picks."}</p>
+    let photo = existing?.avatar || null;
+    let emoji = existing?.avatarEmoji || null;
+    const selectedClass = (url, em) => (photo === url && emoji === em) ? "on" : "";
+    const previewProfile = () => ({ name: existing?.name || "You", color, avatar: photo, avatarEmoji: emoji });
+    const presetGrid = () => AV_PRESETS.map((em, i) => `<button type="button" class="av-choice ${selectedClass(null, em)}" data-avatar-emoji="${em}"><span class="av-emoji" style="background:${AV_COLORS[i % AV_COLORS.length]}">${em}</span><small>${["Fox","Panda","Frog","Tiger","Cat","Octopus","Penguin","Owl","Bear","Dragon","Koala","Unicorn","Wolf","Rabbit"][i]}</small></button>`).join("");
+    modal(`<div class="avatar-picker">
+      <h2>${existing ? "Edit profile" : "Add a profile"}</h2>
+      <p>${existing ? "Update the name, photo or avatar." : "Create a profile with its own photo, list and picks."}</p>
+      <div class="av-preview">${avatar(previewProfile())}<div><b id="avPreviewName">${esc(existing?.name || "New profile")}</b><small class="fine" style="display:block;margin:3px 0 0">Profile picture preview</small></div></div>
       <form id="pf">
         <div class="field"><label class="label" for="pname">Name</label><input class="input" id="pname" maxlength="16" value="${esc(existing?.name || "")}" required></div>
-        <div class="field"><span class="label">Color</span><div class="swatches">${AV_COLORS.map((c, i) => `<button type="button" class="swatch ${i === color ? "on" : ""}" style="background:${c}" data-c="${i}" aria-label="Color ${i + 1}"></button>`).join("")}</div></div>
+        <div class="field"><span class="label">Profile photo</span><div class="av-tools">
+          <label class="btn btn-primary av-upload">${icons.share} Upload photo<input type="file" id="avatarFile" accept="image/png,image/jpeg,image/webp,image/gif"></label>
+          <button type="button" class="btn btn-ghost" id="avatarRemove" ${photo || emoji ? "" : "disabled"}>Remove photo</button>
+        </div><p class="fine" style="margin-top:7px">Choose an image from your device. Images are resized before saving.</p></div>
+        <div class="av-section-title">Default avatars</div><div class="av-grid">${presetGrid()}</div>
+        <div class="av-divider"></div>
+        <div class="av-section-title">Characters from movies and shows</div>
+        <p class="fine">Search a movie or series, then choose a cast member from TMDB.</p>
+        <div class="av-search"><input class="input" id="avatarSearchQ" placeholder="Search a movie or show…" aria-label="Search a movie or show"><button class="btn btn-ghost" type="button" id="avatarSearchBtn">Search</button></div>
+        <div id="avatarSearchStatus" class="av-status">${LIVE ? "Search TMDB to browse character photos." : "Connect TMDB in config.js to browse show characters."}</div>
+        <div id="avatarSearchResults" class="av-results"></div>
+        <div id="avatarCharacters"></div>
+        <div class="field" style="margin-top:20px"><span class="label">Avatar color</span><div class="swatches">${AV_COLORS.map((c, i) => `<button type="button" class="swatch ${i === color ? "on" : ""}" style="background:${c}" data-c="${i}" aria-label="Color ${i + 1}"></button>`).join("")}</div></div>
         <div class="modal-actions">
           ${existing && state.profiles.length > 1 ? `<button type="button" class="btn btn-ghost" id="pdel" style="margin-right:auto;color:#ff9b8a">Delete</button>` : ""}
           <button type="button" class="btn btn-ghost" data-close>Cancel</button>
           <button class="btn btn-primary">${existing ? "Save" : "Add"}</button>
         </div>
-      </form>`, (el, close) => {
+      </form>
+    </div>`, (el, close) => {
+      const preview = el.querySelector(".av-preview");
+      const refreshPreview = () => {
+        preview.innerHTML = `${avatar(previewProfile())}<div><b id="avPreviewName">${esc(el.querySelector("#pname").value.trim() || "New profile")}</b><small class="fine" style="display:block;margin:3px 0 0">Profile picture preview</small></div>`;
+        el.querySelectorAll("[data-avatar-emoji]").forEach(b => b.classList.toggle("on", b.dataset.avatarEmoji === emoji && !photo));
+      };
+      el.querySelector("#pname").addEventListener("input", refreshPreview);
       el.querySelectorAll("[data-c]").forEach(b => b.onclick = () => {
-        color = +b.dataset.c; el.querySelectorAll("[data-c]").forEach(x => x.classList.toggle("on", x === b));
+        color = +b.dataset.c; el.querySelectorAll("[data-c]").forEach(x => x.classList.toggle("on", x === b)); refreshPreview();
+      });
+      el.querySelectorAll("[data-avatar-emoji]").forEach(b => b.onclick = () => { photo = null; emoji = b.dataset.avatarEmoji; refreshPreview(); });
+      el.querySelector("#avatarRemove").onclick = () => { photo = null; emoji = null; refreshPreview(); };
+      el.querySelector("#avatarFile").addEventListener("change", async e => {
+        const file = e.target.files?.[0]; if (!file) return;
+        if (!/^image\/(png|jpeg|webp|gif)$/.test(file.type) || file.size > 8 * 1024 * 1024) { toast("Choose a PNG, JPG, WEBP or GIF under 8 MB"); e.target.value = ""; return; }
+        try {
+          const data = await new Promise((resolve, reject) => {
+            const reader = new FileReader(); reader.onerror = reject;
+            reader.onload = () => {
+              const img = new Image(); img.onerror = reject;
+              img.onload = () => {
+                const size = 256, canvas = document.createElement("canvas"); canvas.width = canvas.height = size;
+                const ctx = canvas.getContext("2d");
+                const side = Math.min(img.naturalWidth, img.naturalHeight), sx = (img.naturalWidth - side) / 2, sy = (img.naturalHeight - side) / 2;
+                ctx.drawImage(img, sx, sy, side, side, 0, 0, size, size);
+                resolve(canvas.toDataURL("image/jpeg", .78));
+              }; img.src = reader.result;
+            }; reader.readAsDataURL(file);
+          });
+          photo = data; emoji = null; refreshPreview();
+        } catch { toast("Couldn't read that image"); }
+      });
+      const status = el.querySelector("#avatarSearchStatus"), results = el.querySelector("#avatarSearchResults"), characters = el.querySelector("#avatarCharacters");
+      async function searchTitles() {
+        const q = el.querySelector("#avatarSearchQ").value.trim(); if (!q) { status.textContent = "Enter a movie or show title to search."; return; }
+        if (!LIVE) { status.textContent = "Connect TMDB in config.js to browse show characters."; return; }
+        status.textContent = "Searching TMDB…"; results.innerHTML = ""; characters.innerHTML = "";
+        try {
+          const data = await tmdb("search/multi", { query: q });
+          const matches = (data.results || []).filter(x => ["movie", "tv"].includes(x.media_type)).slice(0, 8);
+          status.textContent = matches.length ? "Choose a title to browse its cast." : "No matching movies or shows found.";
+          results.innerHTML = matches.map(x => `<button type="button" class="av-show" data-avatar-title="${x.media_type}" data-avatar-id="${x.id}">${x.poster_path ? `<img src="${IMG}w185${esc(x.poster_path)}" alt="">` : `<span style="display:grid;place-items:center;aspect-ratio:2/3;background:var(--panel)">✦</span>`}<b>${esc(x.title || x.name || "Untitled")}</b></button>`).join("");
+        } catch { status.textContent = "Couldn't search TMDB. Check your connection and try again."; }
+      }
+      el.querySelector("#avatarSearchBtn").onclick = searchTitles;
+      el.querySelector("#avatarSearchQ").addEventListener("keydown", e => { if (e.key === "Enter") { e.preventDefault(); searchTitles(); } });
+      results.addEventListener("click", async e => {
+        const b = e.target.closest("[data-avatar-title]"); if (!b) return;
+        const kind = b.dataset.avatarTitle, id = b.dataset.avatarId;
+        status.textContent = "Loading cast…"; characters.innerHTML = "";
+        try {
+          const data = await tmdb(`${kind}/${id}/credits`);
+          const cast = (data.cast || []).filter(x => x.profile_path).slice(0, 24);
+          status.textContent = cast.length ? "Choose a cast member." : "No cast portraits available for this title.";
+          characters.innerHTML = `<div class="av-character-grid">${cast.map(c => `<button type="button" class="av-character" data-avatar-photo="${IMG}w185${esc(c.profile_path)}"><img src="${IMG}w185${esc(c.profile_path)}" alt=""><small>${esc(c.name || c.character || "Cast member")}</small></button>`).join("")}</div>`;
+        } catch { status.textContent = "Couldn't load the cast for that title."; }
+      });
+      characters.addEventListener("click", e => {
+        const b = e.target.closest("[data-avatar-photo]"); if (!b) return;
+        photo = b.dataset.avatarPhoto; emoji = null; refreshPreview(); toast("Character photo selected");
       });
       el.querySelector("#pdel")?.addEventListener("click", () => {
         state.profiles = state.profiles.filter(p => p.id !== existing.id);
@@ -1471,11 +1554,11 @@
       });
       el.querySelector("#pf").onsubmit = e => {
         e.preventDefault(); const name = el.querySelector("#pname").value.trim(); if (!name) return;
-        if (existing) state.profiles = state.profiles.map(p => p.id === existing.id ? { ...p, name, color } : p);
-        else state.profiles = [...state.profiles, { id: "p" + Date.now().toString(36), name, color }];
+        if (existing) state.profiles = state.profiles.map(p => p.id === existing.id ? { ...p, name, color, avatar: photo, avatarEmoji: emoji } : p);
+        else state.profiles = [...state.profiles, { id: "p" + Date.now().toString(36), name, color, avatar: photo, avatarEmoji: emoji }];
         close(); toast(existing ? "Profile updated" : `${name} added`); render();
       };
-    });
+    }, "avatar-modal");
   }
 
   // ---------- router ----------
