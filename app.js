@@ -932,8 +932,8 @@
     const top = LIVE ? { label: "Top 10 Today", path: "trending/all/day" } : { pick: window.VESPERA_ROWS[1].pick.concat(window.VESPERA_ROWS[0].pick) };
     rows.splice(1, 0, asyncRow("Top 10 Today", null, async () => uniq(await data.row(top)), { rank: true }));
     return `
-    ${heroShell()}
     <div id="continueWatchingMount">${continueWatchingSection()}</div>
+    ${heroShell()}
     ${mine.length ? row("Your List", mine.slice(0, 14), "#/list") : ""}
     ${rows.join("")}
     <section class="section" id="homeColls">
@@ -1861,7 +1861,70 @@
   const FLIXSTAR_API = "https://flixstar-api.onrender.com/api";
   const WING_DOWNLOADS = "https://downloads.wing.st";
   const downloadStyle = document.createElement("style");
-  downloadStyle.textContent = `.ves-download-modal{width:min(760px,calc(100vw - 28px));max-height:88vh;overflow:auto;padding:24px}.ves-download-head{display:flex;align-items:center;justify-content:space-between;gap:12px;margin-bottom:18px}.ves-download-head h2{font-size:20px;margin:0}.ves-download-close{border:0;background:var(--panel);color:var(--text);border-radius:9px;width:36px;height:36px;font-size:23px;cursor:pointer}.ves-download-selectors{display:flex;gap:10px;margin:12px 0}.ves-download-selectors select{min-width:0;flex:1;background:var(--panel);color:var(--text);border:1px solid var(--line);border-radius:10px;padding:11px}.ves-download-toolbar{display:flex;justify-content:space-between;align-items:center;gap:12px;flex-wrap:wrap;border-block:1px solid var(--line);padding:12px 0;margin:14px 0;color:var(--muted);font-size:13px}.ves-download-filters{display:flex;gap:6px}.ves-download-filters button{border:1px solid var(--line);background:var(--panel);color:var(--text);border-radius:8px;padding:7px 11px;cursor:pointer}.ves-download-filters button.active{background:var(--accent);color:white;border-color:var(--accent)}.ves-download-list{display:grid;gap:9px}.ves-download-item{display:flex;align-items:center;justify-content:space-between;gap:14px;padding:13px;border:1px solid var(--line);border-radius:12px;background:var(--panel)}.ves-download-item strong{font-size:14px}.ves-download-meta,.ves-download-name{font-size:12px;color:var(--muted);margin-top:4px}.ves-download-actions{display:flex;align-items:center;gap:8px;flex-shrink:0}.ves-download-actions button,.ves-download-actions a{display:inline-flex;align-items:center;justify-content:center;gap:7px;border:1px solid var(--line);border-radius:9px;padding:9px 11px;color:var(--text);background:transparent;text-decoration:none;cursor:pointer;font-size:12px}.ves-download-actions a{background:var(--accent);color:#fff;border-color:var(--accent)}.ves-download-message{color:var(--muted);font-size:13px;padding:18px 4px}.ves-download-error{color:#ff8a8a}@media(max-width:520px){.ves-download-modal{padding:17px}.ves-download-item{align-items:flex-start;flex-direction:column}.ves-download-actions{width:100%;justify-content:flex-end}.ves-download-selectors{flex-direction:column}}`;
+  downloadStyle.textContent = `
+    /* Download dialog styles are fully namespaced to Vespera's download modal. */
+    .modal-back:has(.ves-download-shell){
+      background:rgba(5,7,12,.78);
+      -webkit-backdrop-filter:blur(9px);
+      backdrop-filter:blur(9px);
+      padding:18px;
+    }
+    .modal.ves-download-shell{
+      width:min(720px,calc(100vw - 28px));
+      max-width:720px;
+      max-height:min(88vh,820px);
+      overflow:hidden;
+      padding:0;
+      border:1px solid color-mix(in srgb,var(--line) 78%,transparent);
+      border-radius:18px;
+      background:var(--bg,var(--panel));
+      color:var(--text);
+      box-shadow:0 28px 90px rgba(0,0,0,.48);
+    }
+    .ves-download-modal{max-height:min(88vh,820px);overflow:auto;padding:clamp(18px,3vw,28px);}
+    .ves-download-head{display:flex;align-items:flex-start;justify-content:space-between;gap:16px;margin:0 0 20px;}
+    .ves-download-heading{min-width:0;}
+    .ves-download-kicker{margin:0 0 7px;color:var(--accent);font-size:10px;font-weight:800;letter-spacing:.2em;text-transform:uppercase;}
+    .ves-download-head h2{margin:0;color:var(--text);font-size:clamp(19px,3vw,24px);font-weight:750;line-height:1.2;overflow-wrap:anywhere;}
+    .ves-download-subtitle{margin:7px 0 0;color:var(--muted);font-size:12px;line-height:1.5;}
+    .ves-download-close{display:grid;place-items:center;flex:0 0 36px;width:36px;height:36px;border:1px solid var(--line);background:var(--panel);color:var(--muted);border-radius:11px;font-size:22px;line-height:1;cursor:pointer;transition:background .18s,color .18s,border-color .18s;}
+    .ves-download-close:hover{background:color-mix(in srgb,var(--accent) 12%,var(--panel));color:var(--text);border-color:var(--accent);}
+    .ves-download-selectors{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px;margin:0 0 16px;}
+    .ves-download-selectors label{display:block;min-width:0;}
+    .ves-download-selectors select{display:block;width:100%;min-width:0;appearance:auto;background:var(--panel);color:var(--text);border:1px solid var(--line);border-radius:11px;padding:12px 13px;font:inherit;font-size:13px;outline:none;}
+    .ves-download-selectors select:focus{border-color:var(--accent);box-shadow:0 0 0 3px color-mix(in srgb,var(--accent) 18%,transparent);}
+    .ves-download-toolbar{display:flex;justify-content:space-between;align-items:center;gap:12px;flex-wrap:wrap;border-block:1px solid var(--line);padding:13px 0;margin:0 0 14px;color:var(--muted);font-size:12px;}
+    #vesDownloadCount{font-weight:650;}
+    .ves-download-filters{display:flex;gap:6px;flex-wrap:wrap;}
+    .ves-download-filters button{min-width:54px;border:1px solid var(--line);background:var(--panel);color:var(--muted);border-radius:999px;padding:7px 12px;font:inherit;font-size:11px;font-weight:650;cursor:pointer;transition:background .18s,color .18s,border-color .18s;}
+    .ves-download-filters button:hover{border-color:var(--accent);color:var(--text);}
+    .ves-download-filters button.active{background:var(--accent);color:#fff;border-color:var(--accent);}
+    .ves-download-list{display:grid;gap:9px;}
+    .ves-download-item{display:flex;align-items:center;justify-content:space-between;gap:14px;min-width:0;padding:14px;border:1px solid var(--line);border-radius:13px;background:var(--panel);transition:border-color .18s,transform .18s;}
+    .ves-download-item:hover{border-color:color-mix(in srgb,var(--accent) 55%,var(--line));}
+    .ves-download-item>div:first-child{min-width:0;}
+    .ves-download-item strong{display:block;color:var(--text);font-size:13px;font-weight:750;overflow-wrap:anywhere;}
+    .ves-download-meta,.ves-download-name{margin-top:5px;color:var(--muted);font-size:11px;line-height:1.45;overflow-wrap:anywhere;}
+    .ves-download-actions{display:flex;align-items:center;gap:7px;flex:0 0 auto;}
+    .ves-download-actions button,.ves-download-actions a{display:inline-flex;align-items:center;justify-content:center;gap:7px;min-height:36px;border:1px solid var(--line);border-radius:9px;padding:8px 11px;color:var(--text);background:transparent;text-decoration:none;cursor:pointer;font:inherit;font-size:11px;font-weight:700;white-space:nowrap;transition:background .18s,border-color .18s,transform .18s;}
+    .ves-download-actions button:hover{background:color-mix(in srgb,var(--accent) 10%,var(--panel));border-color:var(--accent);}
+    .ves-download-actions a{background:var(--accent);color:#fff;border-color:var(--accent);}
+    .ves-download-actions a:hover{filter:brightness(1.08);transform:translateY(-1px);}
+    .ves-download-actions svg{width:14px;height:14px;}
+    .ves-download-message{margin:0;color:var(--muted);font-size:13px;line-height:1.6;padding:24px 8px;text-align:center;border:1px dashed var(--line);border-radius:12px;background:color-mix(in srgb,var(--panel) 65%,transparent);}
+    .ves-download-error{color:#ff8a8a;border-color:color-mix(in srgb,#ff6666 40%,var(--line));}
+    .ves-download-modal button:focus-visible,.ves-download-modal a:focus-visible{outline:2px solid var(--accent);outline-offset:3px;}
+    @media(max-width:560px){
+      .modal-back:has(.ves-download-shell){padding:10px;}
+      .modal.ves-download-shell{width:calc(100vw - 20px);max-height:92vh;border-radius:15px;}
+      .ves-download-modal{max-height:92vh;padding:18px 15px;}
+      .ves-download-selectors{grid-template-columns:1fr;gap:8px;}
+      .ves-download-item{align-items:flex-start;flex-direction:column;gap:12px;}
+      .ves-download-actions{width:100%;}
+      .ves-download-actions button,.ves-download-actions a{flex:1;}
+      .ves-download-toolbar{align-items:flex-start;flex-direction:column;}
+    }
+  `;
   document.head.appendChild(downloadStyle);
 
   function openDownloadModal(it) {
@@ -1871,7 +1934,7 @@
     const seasons = (it.seasons || []).filter(x => Number(x.n) > 0);
     let season = seasons[0]?.n || 1, episode = 1, links = [], filter = "all", closed = false;
     const seasonOptions = seasons.length ? seasons.map(x => `<option value="${x.n}">Season ${x.n}</option>`).join("") : `<option value="1">Season 1</option>`;
-    modal(`<div class="ves-download-modal"><header class="ves-download-head"><h2>Downloads for ${esc(it.title)}</h2><button class="ves-download-close" data-close aria-label="Close">×</button></header>${kind === "tv" ? `<div class="ves-download-selectors"><label><span class="sr-only">Season</span><select id="vesDownloadSeason">${seasonOptions}</select></label><label><span class="sr-only">Episode</span><select id="vesDownloadEpisode"><option value="1">Episode 1</option></select></label></div>` : ""}<div class="ves-download-toolbar"><span id="vesDownloadCount">Finding links…</span><div class="ves-download-filters">${[["all","All"],["4k","4K"],["1080p","1080p"]].map(([v,l])=>`<button type="button" data-dl-filter="${v}" class="${v===filter?"active":""}">${l}</button>`).join("")}</div></div><p class="ves-download-message" id="vesDownloadMessage">Loading download options…</p><div class="ves-download-list" id="vesDownloadList"></div></div>`, back => {
+    modal(`<div class="ves-download-modal"><header class="ves-download-head"><div class="ves-download-heading"><p class="ves-download-kicker">VESPERA · DOWNLOADS</p><h2>${esc(it.title)}</h2><p class="ves-download-subtitle">Choose an available source and quality to download</p></div><button class="ves-download-close" data-close aria-label="Close">×</button></header>${kind === "tv" ? `<div class="ves-download-selectors"><label><span class="sr-only">Season</span><select id="vesDownloadSeason">${seasonOptions}</select></label><label><span class="sr-only">Episode</span><select id="vesDownloadEpisode"><option value="1">Episode 1</option></select></label></div>` : ""}<div class="ves-download-toolbar"><span id="vesDownloadCount">Finding links…</span><div class="ves-download-filters">${[["all","All"],["4k","4K"],["1080p","1080p"]].map(([v,l])=>`<button type="button" data-dl-filter="${v}" class="${v===filter?"active":""}">${l}</button>`).join("")}</div></div><p class="ves-download-message" id="vesDownloadMessage">Loading download options…</p><div class="ves-download-list" id="vesDownloadList"></div></div>`, back => {
       const root=back.querySelector(".ves-download-modal"), count=root.querySelector("#vesDownloadCount"), message=root.querySelector("#vesDownloadMessage"), list=root.querySelector("#vesDownloadList"), seasonSel=root.querySelector("#vesDownloadSeason"), episodeSel=root.querySelector("#vesDownloadEpisode");
       const visible=()=>links.filter(x=>filter==="4k"?Number(x.quality)>=2160:filter==="1080p"?Number(x.quality)===1080:true);
       const renderLinks=()=>{const filtered=visible();count.textContent=`Found ${links.length} links`;list.innerHTML=filtered.map((link,i)=>`<article class="ves-download-item"><div><strong>${esc(link.source||link.provider||"Download")}</strong><div class="ves-download-meta">${esc(link.quality?`${link.quality}p`:"Quality unavailable")}${link.size?` · ${esc(link.size)}`:""}</div><div class="ves-download-name">${esc(link.name||link.filename||link.provider||"")}</div></div><div class="ves-download-actions"><button type="button" data-copy-dl="${i}">${icons.share} Copy</button><a href="${esc(link.url)}" target="_blank" rel="noopener noreferrer">${icons.download} Download</a></div></article>`).join("");message.hidden=filtered.length>0;if(!filtered.length)message.textContent=links.length?"No links match this quality filter.":"No download links are available for this selection.";};
@@ -1882,7 +1945,7 @@
       if(seasonSel)seasonSel.addEventListener("change",()=>{season=Number(seasonSel.value)||1;loadEpisodes();});if(episodeSel)episodeSel.addEventListener("change",()=>{episode=Number(episodeSel.value)||1;loadLinks();});
       if(kind==="tv")loadEpisodes();else loadLinks();
       const mo=new MutationObserver(()=>{if(!document.body.contains(back)){closed=true;mo.disconnect();}});mo.observe(document.body,{childList:true});
-    },"ves-download-modal");
+    },"ves-download-shell");
   }
 
   // Main characters shown first for each franchise (wiki page names; redirects are followed).
