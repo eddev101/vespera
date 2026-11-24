@@ -141,7 +141,7 @@
       posterLg: r.poster_path ? IMG + "w500" + r.poster_path : prev.posterLg || null,
       backdrop: r.backdrop_path ? IMG + "w1280" + r.backdrop_path : prev.backdrop || null,
       lang: r.original_language || prev.lang,
-      vote: r.vote_average ?? prev.vote, votes: r.vote_count ?? prev.votes });
+      vote: r.vote_average ?? prev.vote, votes: r.vote_count ?? prev.votes, pop: r.popularity ?? prev.pop });
   }
   const listOf = (json, kind) => (json.results || json.parts || []).map(r => fromTmdb(r, kind)).filter(Boolean);
 
@@ -251,51 +251,93 @@
       const j = await tmdb(`discover/${mk}`, p);
       return { list: listOf(j, mk), more: j.page < Math.min(j.total_pages, 500) };
     },
-    async search({ q, type, genre, year, rating, sort }) {
-      let out;
+    // Search returns { list, more } so the page can offer "Load more".
+    // Tabs: movie = all films (incl. animated), tv = all series, anime = Japanese animation (films + series).
+    async search({ q, type, genre, year, rating, sort }, page = 1) {
+      const ofType = it => !type || (type === "anime" ? it.type === "anime" : it.kind === type);
+      const refine = l => {
+        let out = l.filter(ofType);
+        if (genre) out = out.filter(it => (it.genres || []).includes(genre));
+        if (year) out = out.filter(it => String(it.year) === String(year));
+        if (rating && LIVE) out = out.filter(it => (it.vote || 0) >= +rating);
+        return sort ? sortItems(out, sort) : out;
+      };
       if (!LIVE) {
         const s = (q || "").toLowerCase();
-        out = TITLES.filter(t => (!type || t.type === type) && (!s || [t.title, t.by, t.network, ...t.genres, ...t.cast, String(t.year)].join(" ").toLowerCase().includes(s))).map(t => items.get(t.id));
-      } else if (q) {
-        const yr = year ? +year : undefined;
-        const calls = type === "movie" ? [tmdb("search/movie", { query: q, primary_release_year: yr }).then(j => listOf(j, "movie"))]
-          : type === "tv" || type === "anime" ? [tmdb("search/tv", { query: q, first_air_date_year: yr }).then(j => listOf(j, "tv"))]
-          : [tmdb("search/multi", { query: q }).then(async j => {
-              const l = listOf(j);
-              // If a well-known person matches, lead with their best-known work.
-              const p = (j.results || []).filter(r => r.media_type === "person").sort((a, b) => (b.popularity || 0) - (a.popularity || 0))[0];
-              if (p && (p.popularity || 0) > 3) {
-                try {
-                  const c = await tmdb(`person/${p.id}/combined_credits`);
-                  const credits = [...(c.cast || []), ...(c.crew || []).filter(x => ["Director", "Creator", "Writer", "Screenplay"].includes(x.job))]
-                    .filter(x => (x.vote_count || 0) > 50).sort((a, b) => (b.vote_count || 0) - (a.vote_count || 0));
-                  const top = uniq(credits.map(x => fromTmdb(x)).filter(Boolean)).slice(0, 16);
-                  return [...top, ...l];
-                } catch {}
-              }
-              return l;
-            }), tmdb("search/multi", { query: q, page: 2 }).then(j => listOf(j)).catch(() => [])];
-        out = uniq((await Promise.all(calls)).flat());
-        if (type) out = out.filter(it => it.type === type);
-      } else {
-        // filters only → discover
-        const kinds = type === "movie" ? ["movie"] : type === "tv" || type === "anime" ? ["tv"] : ["movie", "tv"];
-        const lists = await Promise.all(kinds.map(k => {
-          const p = { ...discoverSort(k, sort || "popular"), "vote_count.gte": 100 };
-          const ids = genre ? genreIds(k, genre) : [];
-          if (genre && !ids.length) return [];
-          if (ids.length) p.with_genres = ids.join("|");
-          if (type === "anime") { p.with_genres = ["16", ...ids].join(","); p.with_original_language = "ja"; }
-          if (year) p[k === "movie" ? "primary_release_year" : "first_air_date_year"] = year;
-          if (rating) p["vote_average.gte"] = rating;
-          return tmdb(`discover/${k}`, p).then(j => listOf(j, k));
-        }));
-        out = []; for (let i = 0; i < 20; i++) lists.forEach(l => l[i] && out.push(l[i]));
+        const l = TITLES.filter(t => !s || [t.title, t.by, t.network, ...t.genres, ...t.cast, String(t.year)].join(" ").toLowerCase().includes(s)).map(t => items.get(t.id));
+        return { list: refine(l), more: false };
       }
-      if (genre) out = out.filter(it => (it.genres || []).includes(genre));
-      if (year) out = out.filter(it => String(it.year) === String(year));
-      if (rating && LIVE) out = out.filter(it => (it.vote || 0) >= +rating);
-      return sort ? sortItems(out, sort) : out;
+      if (!q) return data.discoverSearch({ type, genre, year, rating, sort }, page);
+
+      const yr = year ? +year : undefined;
+      const norm = s => String(s || "").toLowerCase().normalize("NFKD").replace(/[̀-ͯ]/g, "").replace(/[^a-z0-9]+/g, " ").trim();
+      const nq = norm(q);
+      const titleScore = it => { const nt = norm(it.title); return nt === nq ? 3 : nt.startsWith(nq + " ") || nt.startsWith(nq) ? 2 : nt.includes(nq) ? 1 : 0; };
+      // Title match helps, but popularity decides between e.g. "Batman" (1989) and an unknown short also called "Batman".
+      const rank = it => titleScore(it) * 120 + Math.log10((it.votes || 0) + 1) * 70 + Math.min(it.pop || 0, 300) / 3;
+
+      // Titles: films and series searched separately, two pages at a time.
+      const pages = [page * 2 - 1, page * 2];
+      const kinds = type === "movie" ? ["movie"] : type === "tv" ? ["tv"] : ["movie", "tv"];
+      const res = await Promise.all(kinds.flatMap(k => pages.map(p =>
+        tmdb(`search/${k}`, { query: q, page: p, ...(yr ? { [k === "movie" ? "primary_release_year" : "first_air_date_year"]: yr } : {}) })
+          .then(j => ({ k, j })).catch(() => ({ k, j: { results: [], page: p, total_pages: 0 } })))));
+      const more = res.some(({ j }) => (j.page || 0) < (j.total_pages || 0));
+      let titles = uniq(res.flatMap(({ k, j }) => listOf(j, k)))
+        .filter(t => t.poster || (t.votes || 0) >= 5) // drop near-empty entries
+        .sort((a, b) => rank(b) - rank(a));
+
+      let lead = [], tail = [];
+      if (page === 1 && !yr) {
+        const [people, related] = await Promise.all([
+          // A matching actor or director → their best-known work.
+          tmdb("search/person", { query: q }).then(async j => {
+            const p = (j.results || []).sort((a, b) => (b.popularity || 0) - (a.popularity || 0))[0];
+            if (!p || (p.popularity || 0) < 2 || norm(p.name).indexOf(nq) < 0) return { list: [], strong: false };
+            const c = await tmdb(`person/${p.id}/combined_credits`);
+            const credits = [...(c.cast || []), ...(c.crew || []).filter(x => ["Director", "Creator", "Writer", "Screenplay", "Novel"].includes(x.job))]
+              .filter(x => (x.vote_count || 0) > 30 && !(x.genre_ids || []).some(g => g === 10763 || g === 10767)) // skip news & talk shows
+              .sort((a, b) => (b.vote_count || 0) - (a.vote_count || 0));
+            return { list: uniq(credits.map(x => fromTmdb(x)).filter(Boolean)).slice(0, 24), strong: norm(p.name) === nq || p.popularity > 8 };
+          }).catch(() => ({ list: [], strong: false })),
+          // A theme like "heist" or "time travel" → popular titles tagged with it.
+          tmdb("search/keyword", { query: q }).then(async j => {
+            const exact = (j.results || []).find(k => norm(k.name) === nq);
+            const kw = exact || (j.results || []).find(k => norm(k.name).startsWith(nq));
+            if (!kw) return { list: [], exact: false };
+            const ls = await Promise.all(["movie", "tv"].filter(k => kinds.includes(k)).map(k =>
+              tmdb(`discover/${k}`, { with_keywords: kw.id, sort_by: "vote_count.desc", "vote_count.gte": 30 }).then(d => listOf(d, k)).catch(() => [])));
+            const out = []; for (let i = 0; i < 20; i++) ls.forEach(l => l[i] && out.push(l[i]));
+            return { list: out, exact: !!exact };
+          }).catch(() => ({ list: [], exact: false })),
+        ]);
+        const strongTitle = titles.some(t => titleScore(t) >= 2 && (t.votes || 0) > 200);
+        if (people.list.length && people.strong && !strongTitle) lead = people.list; else tail.push(...people.list);
+        if (related.exact && related.list.length) {
+          // A theme search ("heist", "time travel"): best-known matches by name, then the best titles about it.
+          const famous = titles.filter(t => (t.votes || 0) > 300).slice(0, 4);
+          lead = [...lead, ...famous, ...related.list.slice(0, 16)];
+          tail.push(...related.list.slice(16));
+        } else tail.push(...related.list);
+      }
+      return { list: refine(uniq([...lead, ...titles, ...tail])), more };
+    },
+    // Filters only (no words typed): browse TMDB with the chosen filters.
+    async discoverSearch({ type, genre, year, rating, sort }, page = 1) {
+      const kinds = type === "movie" ? ["movie"] : type === "tv" ? ["tv"] : ["movie", "tv"];
+      const res = await Promise.all(kinds.map(k => {
+        const p = { ...discoverSort(k, sort || "popular"), "vote_count.gte": 50, page };
+        const ids = genre ? genreIds(k, genre) : [];
+        if (genre && !ids.length) return { k, j: { results: [] } };
+        if (ids.length) p.with_genres = ids.join("|");
+        if (type === "anime") { p.with_genres = ["16", ...ids].join(","); p.with_original_language = "ja"; }
+        if (year) p[k === "movie" ? "primary_release_year" : "first_air_date_year"] = year;
+        if (rating) p["vote_average.gte"] = rating;
+        return tmdb(`discover/${k}`, p).then(j => ({ k, j })).catch(() => ({ k, j: { results: [] } }));
+      }));
+      const lists = res.map(({ k, j }) => listOf(j, k));
+      const out = []; for (let i = 0; i < 20; i++) lists.forEach(l => l[i] && out.push(l[i]));
+      return { list: out, more: res.some(({ j }) => (j.page || 0) < Math.min(j.total_pages || 0, 500)) };
     },
     async genre(name) {
       if (!LIVE) return TITLES.filter(t => t.genres.includes(name)).map(t => items.get(t.id));
@@ -516,6 +558,8 @@
   function ytCmd(frame, func) { try { frame.contentWindow.postMessage(JSON.stringify({ event: "command", func, args: [] }), "*"); } catch {} }
   function mountBgVideo(container, ytKey, muteBtn) {
     if (!ytKey || !state.autoplay || state.perf || !LIVE) return null;
+    // Phones: YouTube overlays its own controls on background video and autoplay eats data — show the still instead.
+    if (matchMedia("(max-width: 700px)").matches) return null;
     container.querySelectorAll(".bg-video").forEach(v => v.remove());
     const wrap = document.createElement("div"); wrap.className = "bg-video";
     wrap.innerHTML = `<iframe src="${ytSrc(ytKey, { bg: true })}" title="Trailer" allow="autoplay; encrypted-media" tabindex="-1" aria-hidden="true"></iframe>`;
@@ -620,12 +664,14 @@
     return `
     <header class="topbar" id="topbar">
       <button class="icon-btn menu-toggle" id="menuToggle" aria-label="Open menu" aria-expanded="false">${icons.menu}</button>
-      <a class="brand" href="#/" aria-label="Vespera home"><img src="vespera-logo-minimal.png" alt="Vespera" style="width:150px;height:40px;object-fit:contain;display:block"></a>
+      <a class="brand" href="#/" aria-label="Vespera home"><img class="brand-full" src="vespera-logo-minimal.png" alt="Vespera" style="width:150px;height:40px;object-fit:contain;display:block"><img class="brand-mark" src="vespera-icon-minimal.png" alt="Vespera"></a>
       <nav class="nav" id="nav" aria-label="Main">
         ${NAV.map(([h, l]) => `<a href="${h}" class="${active(h)}">${l}</a>`).join("")}
-        <a href="#/search" class="nav-search ${active("#/search")}" aria-label="Search">${icons.search}</a>
+        <a href="#/search" class="nav-search ${active("#/search")}" aria-label="Search">${icons.search}<span class="nav-search-label">Search</span></a>
       </nav>
       <div class="top-right">
+        <a class="top-icon" href="#/search" aria-label="Search">${icons.search}</a>
+        <a class="top-icon" href="#/list" aria-label="My List"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M6 3.5h12a1 1 0 011 1V21l-7-4.5L5 21V4.5a1 1 0 011-1z"/></svg></a>
         <button class="avatar" id="avatarBtn" aria-haspopup="menu" aria-expanded="false" aria-label="Profile menu"
           style="background:${AV_COLORS[(p?.color || 0) % AV_COLORS.length]}">${p?.avatar ? `<img src="${esc(p.avatar)}" alt="">` : p?.avatarEmoji ? `<span class="avatar-emoji">${esc(p.avatarEmoji)}</span>` : esc((p?.name || "?")[0].toUpperCase())}</button>
         <div class="pmenu" id="pmenu" role="menu">
@@ -691,6 +737,7 @@
     };
     const show = n => {
       i = (n + featured.length) % featured.length; const t = featured[i];
+      hero.style.setProperty("--amb", t.backdrop ? `url("${t.backdrop}")` : "none"); // tints the page behind the hero on phones
       clearTimeout(videoTimer);
       hero.querySelectorAll(".bg-video").forEach(v => v.remove());
       document.getElementById("heroMute").hidden = true;
@@ -842,7 +889,7 @@
   function uniCard(t, big) {
     return `<div class="uni-card ${big ? "big" : ""}" role="button" tabindex="0" data-preview="${esc(t.key)}" data-uni="${esc(t.key)}" aria-label="${esc(t.title)}">
       <div class="uni-media">${wideHTML(t)}</div>
-      ${big ? "" : `<span class="uni-tab" ${t.runtime ? "" : "hidden"}>${esc(t.runtime || "")}</span>`}
+      ${big ? "" : `<div class="uni-poster" aria-hidden="true">${posterHTML(t)}</div><span class="uni-tab" ${t.runtime ? "" : "hidden"}>${esc(t.runtime || "")}</span>`}
       <div class="uni-logo">${t.logo ? `<img src="${esc(t.logo)}" alt="${esc(t.title)}" loading="lazy">` : `<b>${esc(t.title)}</b>`}</div>
       ${big ? `<div class="uni-actions">
         <button class="btn btn-light" data-action="trailer" data-yt="${esc(t.trailer || "")}" ${t.trailer ? "" : "hidden"}>${icons.play} Trailer</button>
@@ -1002,12 +1049,19 @@
     const f = { q: input.value.trim(), type: params.get("type") || "", genre: params.get("genre") || "", year: params.get("year") || "", rating: params.get("rating") || "", sort: params.get("sort") || "" };
     const res = document.getElementById("results"); const seq = ++searchSeq;
     const anyFilter = f.genre || f.year || f.rating || f.sort;
+    searchState = null;
     if (!f.q && !anyFilter) {
       lazyJobs.clear();
       if (LIVE) {
-        const rows = [["Trending Today", { path: "trending/all/day" }], ["Popular Films", { path: "movie/popular", kind: "movie" }], ["Popular Series", { path: "tv/popular", kind: "tv" }],
-          ["Airing This Week", { path: "tv/on_the_air", kind: "tv" }], ["Coming Soon", { path: "movie/upcoming", kind: "movie" }], ["Top Rated Films", { path: "movie/top_rated", kind: "movie" }], ["Top Rated Series", { path: "tv/top_rated", kind: "tv" }]]
-          .filter(([, r]) => !f.type || f.type === (r.kind || f.type));
+        const anime = (path, extra = {}) => ({ path, kind: path.endsWith("movie") ? "movie" : "tv", params: { with_genres: "16", with_original_language: "ja", "vote_count.gte": 50, ...extra } });
+        const rows = f.type === "anime"
+          ? [["Popular Anime", anime("discover/tv")], ["Anime Films", anime("discover/movie")], ["New Anime", anime("discover/tv", { "first_air_date.gte": `${new Date().getFullYear() - 2}-01-01` })],
+             ["Highest Rated Anime", anime("discover/tv", { sort_by: "vote_average.desc", "vote_count.gte": 300 })]]
+          : [["Trending Today", { path: f.type === "movie" ? "trending/movie/day" : f.type === "tv" ? "trending/tv/day" : "trending/all/day", kind: f.type || undefined }],
+             ["Popular Films", { path: "movie/popular", kind: "movie" }], ["Popular Series", { path: "tv/popular", kind: "tv" }],
+             ["Airing This Week", { path: "tv/on_the_air", kind: "tv" }], ["Coming Soon", { path: "movie/upcoming", kind: "movie" }], ["Now in Cinemas", { path: "movie/now_playing", kind: "movie" }],
+             ["Top Rated Films", { path: "movie/top_rated", kind: "movie" }], ["Top Rated Series", { path: "tv/top_rated", kind: "tv" }]]
+            .filter(([, r]) => !f.type || !r.kind || r.kind === f.type);
         res.innerHTML = `<h2 class="sub-h">Browse genres</h2><div class="filters">${allGenreNames().map(g => `<a class="pill pill-link" href="#/genre/${slug(g)}">${esc(g)}</a>`).join("")}</div>
           <div class="bleed">${rows.map(([l, r]) => asyncRow(l, null, () => data.row(r))).join("")}</div>`;
       } else {
@@ -1016,14 +1070,41 @@
       }
       mountLazy(); return;
     }
-    res.innerHTML = `<div class="grid">${Array.from({ length: 6 }, () => `<div class="card skel"></div>`).join("")}</div>`;
+    res.innerHTML = `<div class="grid">${Array.from({ length: 12 }, () => `<div class="card skel"></div>`).join("")}</div>`;
     try {
-      const hits = await data.search(f); if (seq !== searchSeq) return;
-      res.innerHTML = hits.length
-        ? `<p style="color:var(--muted);margin:0 0 16px">${hits.length} result${hits.length > 1 ? "s" : ""}</p><div class="grid">${hits.map(card).join("")}</div>`
-        : empty(f.q ? `Nothing for “${esc(f.q)}”` : "No matches", "Check the spelling, loosen a filter, or try a person or year.",
+      const st = { f, page: 1, seen: new Set(), seq };
+      let { list, more } = await data.search(f, 1);
+      // A narrow tab (e.g. Anime) can filter a page down to nothing — look one page further before giving up.
+      while (!list.length && more && st.page < 3) { st.page++; ({ list, more } = await data.search(f, st.page)); }
+      if (seq !== searchSeq) return;
+      list = list.filter(x => !st.seen.has(x.key) && st.seen.add(x.key));
+      searchState = { ...st, more };
+      res.innerHTML = list.length
+        ? `<p class="search-count" id="searchCount">${list.length}${more ? "+" : ""} result${list.length > 1 ? "s" : ""}</p>
+           <div class="grid" id="searchGrid">${list.map(card).join("")}</div>
+           <div class="more-wrap"><button class="btn btn-ghost" id="searchMore" data-action="search-more" ${more ? "" : "hidden"}>Load more</button></div>`
+        : empty(f.q ? `Nothing for “${esc(f.q)}”` : "No matches", f.type ? "Try the All tab, check the spelling, or loosen a filter." : "Check the spelling, loosen a filter, or try a person or year.",
           FEAT.assistant && f.q ? `<button class="btn btn-primary" data-action="ask-ai" style="margin-top:18px">${icons.spark} Ask the AI instead</button>` : "");
     } catch (err) { console.warn("Vespera search failed:", err); if (seq === searchSeq) res.innerHTML = failBox(); }
+  }
+  let searchState = null;
+  async function searchMore(btn) {
+    const st = searchState; if (!st || !st.more) return;
+    btn.disabled = true; btn.textContent = "Loading…";
+    try {
+      let added = [];
+      while (!added.length && st.more) {
+        st.page++;
+        const r = await data.search(st.f, st.page);
+        if (searchState !== st) return;
+        st.more = r.more;
+        added = r.list.filter(x => !st.seen.has(x.key) && st.seen.add(x.key));
+      }
+      document.getElementById("searchGrid")?.insertAdjacentHTML("beforeend", added.map(card).join(""));
+      const n = document.querySelectorAll("#searchGrid .card").length;
+      const c = document.getElementById("searchCount"); if (c) c.textContent = `${n}${st.more ? "+" : ""} results`;
+    } catch { toast("Couldn't load more results"); }
+    btn.disabled = false; btn.textContent = "Load more"; btn.hidden = !st.more;
   }
 
   // Quick preview popup (opens from any poster). "More info" goes to the full title page.
@@ -1138,7 +1219,9 @@
       ["Constellations", cs.map(c => `<a href="#/constellations/${c.id}">${esc(c.name)}</a>`).join(", ")],
       ["Awards", t.awards ? esc(t.awards) : ""],
     ].filter(([, v]) => v);
+    const factLine = [t.year, t.runtime, t.status, (t.genres || []).slice(0, 2).join(", ")].filter(Boolean).map(esc).join(" · ");
     return `<button class="back-link" data-action="back">${icons.left} Back</button>
+    ${t.backdrop ? `<div class="m-amb" style="background-image:url('${esc(t.backdrop)}')" aria-hidden="true"></div>` : ""}
     <section class="detail-hero" id="detailHero">
       <div class="detail-bg" id="detailBg">${wideHTML(t, true)}</div>
       <div class="hero-controls"><button class="icon-btn" id="detailMute" aria-label="Unmute trailer" hidden>${icons.muted}</button></div>
@@ -1159,6 +1242,15 @@
           </div>
         </div>
       </div>
+    </section>
+    <section class="m-card" aria-label="About ${esc(t.title)}">
+      <h2>${esc(t.title)}</h2>
+      ${factLine ? `<p class="m-facts">${factLine}</p>` : ""}
+      ${scoreChips(t) || aw ? `<div class="m-scores">${scoreChips(t)}${aw ? `<span class="pv-award">${icons.trophy} ${esc(aw)}</span>` : ""}</div>` : ""}
+      <p class="m-syn clamp">${esc(t.synopsis || "No synopsis yet.")}</p>
+      ${(t.synopsis || "").length > 160 ? `<button class="text-btn m-more" data-action="expand-syn">Read more</button>` : ""}
+      ${castNames.length ? `<p class="m-row"><b>Starring:</b> ${castNames.slice(0, 3).map(c => `<a href="#/search?q=${slug(c)}">${esc(c)}</a>`).join(", ")}</p>` : ""}
+      ${t.by ? `<p class="m-row"><b>${esc(t.byRole === "Directed by" ? "Director" : "Created by")}:</b> ${esc(t.by)}</p>` : ""}
     </section>
     ${prov ? `<section class="section" id="providers">
       <div class="section-head"><h2>Where to watch</h2><a href="${esc(prov.link)}" target="_blank" rel="noopener">All options</a></div>
@@ -1267,7 +1359,8 @@
       const s = await tmdb(`tv/${t.tmdbId}/season/${n}`);
       if (!document.getElementById("epList")) return;
       box.innerHTML = (s.episodes || []).map(e => `<article class="ep">
-        <div class="ep-still">${e.still_path ? `<img src="${IMG}w300${e.still_path}" alt="" loading="lazy">` : `<span>${e.episode_number}</span>`}</div>
+        <div class="ep-still">${e.still_path ? `<img src="${IMG}w300${e.still_path}" alt="" loading="lazy">` : `<span>${e.episode_number}</span>`}
+          ${e.vote_average ? `<span class="ep-rate">TMDB ${e.vote_average.toFixed(1)}</span>` : ""}${e.runtime ? `<span class="ep-dur">${e.runtime}m</span>` : ""}</div>
         <div><b>${e.episode_number}. ${esc(e.name)}</b>
           <div class="meta" style="color:var(--muted);font-size:12.5px;margin:4px 0 6px">${e.air_date ? `<span>${esc(fmtDate(e.air_date))}</span>` : ""}${e.runtime ? `<span class="dot"></span><span>${e.runtime}m</span>` : ""}${e.vote_average ? `<span class="dot"></span><span>★ ${e.vote_average.toFixed(1)}</span>` : ""}</div>
           <p>${esc(e.overview || "No description yet.")}</p>
@@ -1942,7 +2035,18 @@
     if (scr) { const r = scr.parentElement.querySelector(".row"); r.scrollBy({ left: +scr.dataset.scroll * r.clientWidth * .85, behavior: "smooth" }); return; }
 
     const ty = t.closest("[data-type]");
-    if (ty) { setParam("type", ty.dataset.type); return; }
+    if (ty) {
+      // Search tabs switch in place: update the address, the active tab and the results without reloading the page.
+      if (document.getElementById("q") && location.hash.startsWith("#/search")) {
+        const p = new URLSearchParams(location.hash.split("?")[1] || "");
+        ty.dataset.type ? p.set("type", ty.dataset.type) : p.delete("type");
+        const q = document.getElementById("q").value.trim(); q ? p.set("q", q) : p.delete("q");
+        history.replaceState(null, "", "#/search" + (p.toString() ? "?" + p : ""));
+        document.querySelectorAll(".tabs .tab").forEach(b => { const on = b === ty; b.classList.toggle("on", on); b.setAttribute("aria-selected", on); });
+        runSearch();
+      } else setParam("type", ty.dataset.type);
+      return;
+    }
 
     const act = t.closest("[data-action]");
     if (act) {
@@ -1967,6 +2071,8 @@
       if (a === "surprise") data.random().then(r => { if (r) location.hash = `#/title/${r.key}`; }).catch(() => toast("Couldn't pick one — try again"));
       if (a === "back") { history.length > 1 ? history.back() : (location.hash = "#/"); }
       if (a === "more" && browseState) { browseState.page++; loadBrowse(true); }
+      if (a === "search-more") searchMore(act);
+      if (a === "expand-syn") { const p = act.parentElement.querySelector(".m-syn"); p.classList.toggle("clamp"); act.textContent = p.classList.contains("clamp") ? "Read more" : "Show less"; }
       if (a === "toggle-filters") { const p = document.getElementById("filtersPanel"); p.hidden = !p.hidden; act.setAttribute("aria-expanded", !p.hidden); }
       if (a === "clear-filters") { const p = new URLSearchParams(location.hash.split("?")[1] || ""); ["genre", "year", "rating", "sort"].forEach(k => p.delete(k));
         location.hash = "#/search" + (p.toString() ? "?" + p : ""); }
