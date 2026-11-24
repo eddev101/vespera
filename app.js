@@ -470,7 +470,7 @@
   // Profile avatars are stored with profile data so they follow the profile on supported sync.
   const avatarStyle = document.getElementById("vespera-avatar-style") || document.createElement("style");
   avatarStyle.id = "vespera-avatar-style";
-  avatarStyle.textContent = `.avatar{overflow:hidden;display:inline-grid;place-items:center;flex:0 0 auto}.avatar img{width:100%;height:100%;object-fit:cover;display:block;border-radius:inherit}.avatar-emoji{font-size:1.45em;line-height:1}.modal.avatar-modal{width:min(800px,calc(100vw - 28px));max-height:90vh;overflow:auto}.avatar-picker{width:100%;max-height:unset;overflow:visible}.av-preview{display:flex;align-items:center;gap:14px;margin:18px 0;padding:14px;border:1px solid var(--line);border-radius:14px;background:var(--panel)}.av-preview .avatar{width:64px;height:64px;font-size:24px}.av-tools{display:flex;flex-wrap:wrap;gap:9px}.av-upload{position:relative;display:inline-flex;align-items:center;gap:8px}.av-upload input{position:absolute;inset:0;width:100%;height:100%;opacity:0;cursor:pointer}.av-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(66px,1fr));gap:12px;margin:12px 0 20px}.av-choice{border:1px solid transparent;border-radius:13px;background:var(--panel);color:var(--text);padding:7px;cursor:pointer;display:grid;justify-items:center;gap:5px;min-width:0}.av-choice:hover,.av-choice.on{border-color:var(--accent);background:color-mix(in srgb,var(--accent) 12%,var(--panel))}.av-choice img{width:58px;height:58px;border-radius:50%;object-fit:cover;background:#17151d}.av-choice .av-emoji{width:58px;height:58px;border-radius:50%;display:grid;place-items:center;font-size:30px}.av-choice small{font-size:10px;color:var(--muted);max-width:100%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.av-section-title{font-size:13px;font-weight:700;margin:20px 0 8px}.av-search{display:flex;gap:8px;margin:10px 0}.av-search .input{flex:1;min-width:0}.av-results{display:grid;grid-template-columns:repeat(auto-fill,minmax(88px,1fr));gap:10px}.av-status{color:var(--muted);font-size:12px;margin:8px 0}.av-show{border:1px solid var(--line);background:var(--panel);color:var(--text);border-radius:10px;padding:8px;cursor:pointer;text-align:left}.av-show img{width:100%;aspect-ratio:2/3;object-fit:cover;border-radius:7px}.av-show b{display:block;font-size:11px;margin-top:5px}.av-character-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(70px,1fr));gap:10px}.av-character{border:1px solid transparent;border-radius:12px;background:var(--panel);padding:6px;color:var(--text);cursor:pointer}.av-character img{width:58px;height:58px;object-fit:cover;border-radius:50%;display:block;margin:auto}.av-character small{display:block;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:10px;margin-top:5px}.av-divider{height:1px;background:var(--line);margin:18px 0}@media(max-width:560px){.avatar-picker{padding:18px}.av-grid{grid-template-columns:repeat(4,minmax(0,1fr))}}`;
+  avatarStyle.textContent = `.avatar{overflow:hidden;display:inline-grid;place-items:center;flex:0 0 auto}.avatar img{width:100%;height:100%;object-fit:cover;display:block;border-radius:inherit}.avatar-emoji{font-size:1.45em;line-height:1}.modal.avatar-modal{width:min(800px,calc(100vw - 28px));max-height:90vh;overflow:auto}.avatar-picker{width:100%;max-height:unset;overflow:visible}.av-preview{display:flex;align-items:center;gap:14px;margin:18px 0;padding:14px;border:1px solid var(--line);border-radius:14px;background:var(--panel)}.av-preview .avatar{width:64px;height:64px;font-size:24px}.av-tools{display:flex;flex-wrap:wrap;gap:9px}.av-upload{position:relative;display:inline-flex;align-items:center;gap:8px}.av-upload input{position:absolute;inset:0;width:100%;height:100%;opacity:0;cursor:pointer}.av-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(66px,1fr));gap:12px;margin:12px 0 20px}.av-choice{border:1px solid transparent;border-radius:13px;background:var(--panel);color:var(--text);padding:7px;cursor:pointer;display:grid;justify-items:center;gap:5px;min-width:0}.av-choice:hover,.av-choice.on{border-color:var(--accent);background:color-mix(in srgb,var(--accent) 12%,var(--panel))}.av-choice img{width:58px;height:58px;border-radius:50%;object-fit:cover;background:#17151d}.av-choice .av-emoji{width:58px;height:58px;border-radius:50%;display:grid;place-items:center;font-size:30px}.av-choice small{font-size:10px;color:var(--muted);max-width:100%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.av-section-title{font-size:13px;font-weight:700;margin:20px 0 8px}.av-search{display:flex;gap:8px;margin:10px 0}.av-search .input{flex:1;min-width:0}.av-results{display:grid;grid-template-columns:repeat(auto-fill,minmax(88px,1fr));gap:10px}.av-status{color:var(--muted);font-size:12px;margin:8px 0}.av-show{border:1px solid var(--line);background:var(--panel);color:var(--text);border-radius:10px;padding:8px;cursor:pointer;text-align:left}.av-show img{width:100%;aspect-ratio:2/3;object-fit:cover;border-radius:7px}.av-show b{display:block;font-size:11px;margin-top:5px}.av-franchise-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(125px,1fr));gap:10px;margin:12px 0}.av-franchise{display:flex;align-items:center;gap:10px;text-align:left;padding:10px;border:1px solid var(--line);border-radius:12px;background:var(--panel);color:var(--text);cursor:pointer;min-height:58px}.av-franchise:hover,.av-franchise.on{border-color:var(--accent);background:color-mix(in srgb,var(--accent) 12%,var(--panel))}.av-franchise .av-franchise-icon{width:34px;height:34px;display:grid;place-items:center;border-radius:9px;background:linear-gradient(135deg,#39205d,#171321);font-size:18px;flex:0 0 auto}.av-franchise b{font-size:11px;line-height:1.25}.av-franchise small{display:block;color:var(--muted);font-size:9px;margin-top:3px}.av-load-more{display:flex;justify-content:center;margin:14px 0}.av-character-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(70px,1fr));gap:10px}.av-character{border:1px solid transparent;border-radius:12px;background:var(--panel);padding:6px;color:var(--text);cursor:pointer}.av-character img{width:58px;height:58px;object-fit:cover;border-radius:50%;display:block;margin:auto}.av-character small{display:block;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:10px;margin-top:5px}.av-divider{height:1px;background:var(--line);margin:18px 0}@media(max-width:560px){.avatar-picker{padding:18px}.av-grid{grid-template-columns:repeat(4,minmax(0,1fr))}}`;
   if (!avatarStyle.parentNode) document.head.appendChild(avatarStyle);
   const snap = it => ({ key: it.key, title: it.title, year: it.year, date: it.date, type: it.type, kind: it.kind, format: it.format, genres: it.genres,
     poster: it.poster, backdrop: it.backdrop, synopsis: it.synopsis, tmdbId: it.tmdbId, local: it.local, vote: it.vote, added: it.added });
@@ -1473,13 +1473,15 @@
         <div class="av-section-title">Default avatars</div><div class="av-grid">${presetGrid()}</div>
         <div class="av-divider"></div>
         <div class="av-section-title">Movie &amp; series characters</div>
-        <p class="fine">Choose a movie or series, then browse images from its character wiki. These are character-page images, not TMDB actor headshots.</p>
-        <div class="av-search"><input class="input" id="avatarSearchQ" placeholder="Search a movie or show…" aria-label="Search a movie or show"><button class="btn btn-ghost" type="button" id="avatarSearchBtn">Search titles</button></div>
-        <div id="avatarSearchStatus" class="av-status">${LIVE ? "Search a title to find its character wiki." : "Connect TMDB in config.js to search titles."}</div>
-        <div id="avatarSearchResults" class="av-results"></div>
-        <div class="field" style="margin-top:12px"><label class="label" for="avatarWikiDomain">Character wiki</label><input class="input" id="avatarWikiDomain" placeholder="Fandom wiki subdomain, e.g. harrypotter"><small class="fine">Auto-filled for supported franchises. You can change it if needed.</small></div>
-        <div class="av-search"><input class="input" id="avatarCharacterQ" placeholder="Character name (e.g. Hermione Granger)" aria-label="Search character name"><button class="btn btn-primary" type="button" id="avatarCharacterSearchBtn">Find characters</button></div>
+        <p class="fine">Browse a franchise to see its character portraits. No need to search for individual characters.</p>
+        <div class="av-search"><input class="input" id="avatarFranchiseQ" placeholder="Search franchises…" aria-label="Search franchises"><button class="btn btn-ghost" type="button" id="avatarFranchiseSearchBtn">Search</button></div>
+        <div id="avatarFranchiseStatus" class="av-status">Choose a franchise below to browse its characters.</div>
+        <div id="avatarFranchises" class="av-franchise-grid"></div>
+        <div class="av-load-more" id="avatarFranchiseMoreWrap"><button type="button" class="btn btn-ghost" id="avatarFranchiseMore">Load more franchises</button></div>
+        <div class="av-divider"></div>
+        <div id="avatarCharacterHeading" class="av-section-title" style="display:none"></div>
         <div id="avatarCharacters"></div>
+        <div class="av-load-more" id="avatarCharacterMoreWrap" style="display:none"><button type="button" class="btn btn-ghost" id="avatarCharacterMore">Load more characters</button></div>
         <div class="field" style="margin-top:20px"><span class="label">Avatar color</span><div class="swatches">${AV_COLORS.map((c, i) => `<button type="button" class="swatch ${i === color ? "on" : ""}" style="background:${c}" data-c="${i}" aria-label="Color ${i + 1}"></button>`).join("")}</div></div>
         <div class="modal-actions">
           ${existing && state.profiles.length > 1 ? `<button type="button" class="btn btn-ghost" id="pdel" style="margin-right:auto;color:#ff9b8a">Delete</button>` : ""}
@@ -1519,77 +1521,106 @@
           photo = data; emoji = null; refreshPreview();
         } catch { toast("Couldn't read that image"); }
       });
-      const status = el.querySelector("#avatarSearchStatus"), results = el.querySelector("#avatarSearchResults"), characters = el.querySelector("#avatarCharacters");
-      const wikiInput = el.querySelector("#avatarWikiDomain"), characterInput = el.querySelector("#avatarCharacterQ");
-      const wikiAliases = [
-        [/harry potter|wizarding world|fantastic beasts/i, "harrypotter"],
-        [/game of thrones|house of the dragon|a song of ice and fire/i, "gameofthrones"],
-        [/star wars|mandalorian|andor|ahsoka/i, "starwars"],
-        [/marvel|avengers|spider-man|x-men|deadpool/i, "marvel"],
-        [/batman|superman|wonder woman|dc comics|suicide squad/i, "dc"],
-        [/lord of the rings|the hobbit|middle-earth/i, "lotr"],
-        [/stranger things/i, "strangerthings"],
-        [/the walking dead/i, "walkingdead"],
-        [/breaking bad|better call saul/i, "breakingbad"],
-        [/the witcher/i, "witcher"],
-        [/friends/i, "friends"],
-        [/the office/i, "theoffice"],
-        [/pokemon/i, "pokemon"],
-        [/avatar: the last airbender|the legend of korra/i, "avatar"],
-        [/spongebob/i, "spongebob"],
-        [/dragon ball/i, "dragonball"],
-        [/naruto/i, "naruto"],
-        [/one piece/i, "onepiece"],
-        [/minecraft/i, "minecraft"],
-        [/fortnite/i, "fortnite"]
-      ];
-      const wikiForTitle = title => wikiAliases.find(([re]) => re.test(title))?.[1] || title.toLowerCase().replace(/[^a-z0-9]+/g, "").slice(0, 48);
-      async function searchTitles() {
-        const q = el.querySelector("#avatarSearchQ").value.trim(); if (!q) { status.textContent = "Enter a movie or show title to search."; return; }
-        if (!LIVE) { status.textContent = "Connect TMDB in config.js to search titles."; return; }
-        status.textContent = "Searching titles…"; results.innerHTML = ""; characters.innerHTML = "";
+      const status = el.querySelector("#avatarFranchiseStatus"), franchiseGrid = el.querySelector("#avatarFranchises"), characters = el.querySelector("#avatarCharacters");
+      const franchiseQuery = el.querySelector("#avatarFranchiseQ"), characterHeading = el.querySelector("#avatarCharacterHeading");
+      const characterMoreWrap = el.querySelector("#avatarCharacterMoreWrap"), characterMore = el.querySelector("#avatarCharacterMore");
+      const franchiseMoreWrap = el.querySelector("#avatarFranchiseMoreWrap");
+      const franchises = [
+        ["Harry Potter","harrypotter","Wizarding World","🪄"], ["Game of Thrones","gameofthrones","Westeros","🐉"],
+        ["House of the Dragon","gameofthrones","Westeros","🔥"], ["Star Wars","starwars","A galaxy far, far away","🚀"],
+        ["Marvel","marvel","Marvel Universe","✦"], ["DC Comics","dc","DC Universe","🦇"],
+        ["The Lord of the Rings","lotr","Middle-earth","💍"], ["The Hobbit","lotr","Middle-earth","🧙"],
+        ["Stranger Things","strangerthings","Hawkins","🚲"], ["The Walking Dead","walkingdead","The Walking Dead","🧟"],
+        ["Breaking Bad","breakingbad","Albuquerque","⚗️"], ["The Witcher","witcher","The Continent","⚔️"],
+        ["Friends","friends","Central Perk","☕"], ["The Office","theoffice","Dunder Mifflin","📎"],
+        ["Pokémon","pokemon","Pokémon world","⚡"], ["Avatar: The Last Airbender","avatar","Four Nations","🌊"],
+        ["SpongeBob SquarePants","spongebob","Bikini Bottom","🫧"], ["Dragon Ball","dragonball","Dragon World","🐉"],
+        ["Naruto","naruto","Hidden Villages","🍥"], ["One Piece","onepiece","Grand Line","🏴‍☠️"],
+        ["The Simpsons","simpsons","Springfield","🍩"], ["Rick and Morty","rickandmorty","Multiverse","🛸"],
+        ["Peaky Blinders","peakyblinders","Shelby family","🎩"], ["The Boys","theboys","Vought universe","⚡"],
+        ["Supernatural","supernatural","Hunters & monsters","👻"], ["The Big Bang Theory","bigbangtheory","Pasadena","🧪"],
+        ["Sailor Moon","sailormoon","Sailor Guardians","🌙"], ["Attack on Titan","attackontitan","Humanity vs Titans","⚔️"],
+        ["Demon Slayer","kimetsunoyaiba","Demon Slayer Corps","🌸"], ["My Hero Academia","myheroacademia","U.A. High","💥"],
+        ["The Hunger Games","thehungergames","Panem","🏹"], ["Twilight","twilightsaga","Forks","🌒"],
+        ["The Matrix","matrix","The Matrix","🕶️"], ["Jurassic Park","jurassicpark","Jurassic Park","🦖"]
+      ].map(([name,wiki,desc,icon])=>({name,wiki,desc,icon}));
+      let franchiseVisible = 12, activeFranchise = null, characterContinue = null, characterLoading = false, tmdbFranchiseMatches = [];
+      const resolveFranchise = title => {
+        const rules = [[/harry potter|wizarding world|fantastic beasts/i,"harrypotter"],[/game of thrones|house of the dragon|a song of ice and fire/i,"gameofthrones"],[/star wars|mandalorian|andor|ahsoka/i,"starwars"],[/marvel|avengers|spider-man|x-men|deadpool/i,"marvel"],[/batman|superman|wonder woman|dc comics|suicide squad/i,"dc"],[/lord of the rings|the hobbit|middle-earth/i,"lotr"],[/stranger things/i,"strangerthings"],[/walking dead/i,"walkingdead"],[/breaking bad|better call saul/i,"breakingbad"],[/witcher/i,"witcher"],[/pokemon/i,"pokemon"],[/avatar: the last airbender|legend of korra/i,"avatar"],[/spongebob/i,"spongebob"],[/dragon ball/i,"dragonball"],[/naruto/i,"naruto"],[/one piece/i,"onepiece"],[/simpsons/i,"simpsons"],[/rick and morty/i,"rickandmorty"],[/peaky blinders/i,"peakyblinders"],[/the boys/i,"theboys"],[/supernatural/i,"supernatural"],[/sailor moon/i,"sailormoon"],[/attack on titan/i,"attackontitan"],[/demon slayer/i,"kimetsunoyaiba"],[/my hero academia/i,"myheroacademia"],[/hunger games/i,"thehungergames"],[/twilight/i,"twilightsaga"],[/matrix/i,"matrix"],[/jurassic park/i,"jurassicpark"]];
+        const hit=rules.find(([re])=>re.test(title)); return hit ? franchises.find(f=>f.wiki===hit[1]) : franchises.find(f=>f.name.toLowerCase()===title.toLowerCase());
+      };
+      const renderFranchises = () => {
+        const q = franchiseQuery.value.trim().toLowerCase();
+        const filtered = franchises.filter(f => !q || `${f.name} ${f.desc}`.toLowerCase().includes(q));
+        const shown = q ? filtered : filtered.slice(0, franchiseVisible);
+        const tmdbCards = tmdbFranchiseMatches.map(m=>`<button type="button" class="av-franchise" data-franchise="${esc(m.franchise.name)}"><span class="av-franchise-icon">${m.poster?`<img src="${esc(m.poster)}" alt="" style="width:100%;height:100%;object-fit:cover;border-radius:8px">`:m.franchise.icon}</span><span><b>${esc(m.title)}</b><small>TMDB · ${esc(m.franchise.desc)}</small></span></button>`).join("");
+        franchiseGrid.innerHTML = tmdbCards + shown.map(f => `<button type="button" class="av-franchise ${activeFranchise?.name===f.name?"on":""}" data-franchise="${esc(f.name)}"><span class="av-franchise-icon">${f.icon}</span><span><b>${esc(f.name)}</b><small>${esc(f.desc)}</small></span></button>`).join("") || (tmdbCards ? "" : `<p class="fine">No connected franchise matches. Try another name or upload a photo.</p>`);
+        franchiseMoreWrap.style.display = !q && filtered.length > franchiseVisible ? "flex" : "none";
+      };
+      async function fetchFranchiseCharacters(loadMore=false) {
+        if (!activeFranchise || characterLoading) return;
+        characterLoading = true;
+        const wiki = activeFranchise.wiki;
+        status.textContent = loadMore ? `Loading more ${activeFranchise.name} characters…` : `Loading ${activeFranchise.name} characters…`;
+        characterMore.disabled = true;
         try {
-          const data = await tmdb("search/multi", { query: q });
-          const matches = (data.results || []).filter(x => ["movie", "tv"].includes(x.media_type)).slice(0, 8);
-          status.textContent = matches.length ? "Choose the franchise you want to browse." : "No matching movies or shows found.";
-          results.innerHTML = matches.map(x => `<button type="button" class="av-show" data-avatar-title="${esc(x.title || x.name || "Untitled")}">${x.poster_path ? `<img src="${IMG}w185${esc(x.poster_path)}" alt="">` : `<span style="display:grid;place-items:center;aspect-ratio:2/3;background:var(--panel)">✦</span>`}<b>${esc(x.title || x.name || "Untitled")}</b></button>`).join("");
-        } catch { status.textContent = "Couldn't search TMDB. Check your connection and try again."; }
-      }
-      async function searchCharacterPages() {
-        const wiki = wikiInput.value.trim().toLowerCase().replace(/^https?:\/\//, "").replace(/\.fandom\.com.*$/, "").replace(/[^a-z0-9-]/g, "");
-        const q = characterInput.value.trim();
-        if (!wiki) { status.textContent = "Choose a title or enter its Fandom wiki subdomain first."; return; }
-        if (!q) { status.textContent = "Enter a character name to search."; return; }
-        status.textContent = `Searching ${wiki}.fandom.com for character pages…`; characters.innerHTML = "";
-        try {
-          const params = new URLSearchParams({ action: "query", generator: "search", gsrsearch: q, gsrnamespace: "0", gsrlimit: "30", prop: "pageimages|info", piprop: "thumbnail|original", pithumbsize: "320", inprop: "url", format: "json", origin: "*" });
-          const response = await fetch(`https://${wiki}.fandom.com/api.php?${params.toString()}`, { headers: { accept: "application/json" } });
+          const params = new URLSearchParams({action:"query", generator:"categorymembers", gcmtitle:"Category:Characters", gcmtype:"page", gcmlimit:"50", prop:"pageimages|info", piprop:"thumbnail|original", pithumbsize:"320", inprop:"url", format:"json", origin:"*"});
+          if (loadMore && characterContinue) Object.entries(characterContinue).forEach(([k,v])=>params.set(k,v));
+          let response = await fetch(`https://${wiki}.fandom.com/api.php?${params}`, {headers:{accept:"application/json"}});
           if (!response.ok) throw new Error(`HTTP ${response.status}`);
-          const data = await response.json();
-          const pages = Object.values(data.query?.pages || {}).filter(x => x.thumbnail?.source || x.original?.source).sort((a,b) => (a.index || 999) - (b.index || 999));
-          if (!pages.length) { status.textContent = `No illustrated character pages found on ${wiki}.fandom.com. Try another character name or wiki.`; return; }
-          status.textContent = `Found ${pages.length} illustrated wiki pages. Choose the character image you want.`;
-          characters.innerHTML = `<div class="av-character-grid">${pages.map(page => {
-            const src = page.thumbnail?.source || page.original?.source;
-            const title = page.title || "Character";
+          let data = await response.json();
+          let pages = Object.values(data.query?.pages || {}).filter(x=>x.thumbnail?.source || x.original?.source).sort((a,b)=>(a.index||999)-(b.index||999));
+          // Some wikis do not maintain a common Characters category. Fall back to the wiki's own search index.
+          if (!loadMore && !pages.length) {
+            const fallback = new URLSearchParams({action:"query",generator:"search",gsrsearch:"character",gsrnamespace:"0",gsrlimit:"50",prop:"pageimages|info",piprop:"thumbnail|original",pithumbsize:"320",inprop:"url",format:"json",origin:"*"});
+            response = await fetch(`https://${wiki}.fandom.com/api.php?${fallback}`, {headers:{accept:"application/json"}});
+            if (!response.ok) throw new Error(`HTTP ${response.status}`);
+            data = await response.json();
+            pages = Object.values(data.query?.pages || {}).filter(x=>x.thumbnail?.source || x.original?.source).sort((a,b)=>(a.index||999)-(b.index||999));
+          }
+          characterContinue = data.continue || null;
+          const cards = pages.map(page=>{
+            const src=page.thumbnail?.source || page.original?.source, title=page.title || "Character";
             return `<button type="button" class="av-character" data-avatar-photo="${esc(src)}" data-avatar-character="${esc(title)}" title="${esc(title)}"><img src="${esc(src)}" alt="${esc(title)}" loading="lazy"><small>${esc(title.replace(/ \(.*?\)$/, ""))}</small></button>`;
-          }).join("")}</div><p class="fine" style="margin-top:10px">Images are supplied by the selected fan wiki; availability and image rights vary by page.</p>`;
+          }).join("");
+          if (!loadMore) characters.innerHTML = `<div class="av-character-grid">${cards}</div><p class="fine" style="margin-top:10px">Character portraits are provided by ${esc(wiki)}.fandom.com. Some franchise wikis may have limited image coverage.</p>`;
+          else { const grid=characters.querySelector(".av-character-grid"); if (grid) grid.insertAdjacentHTML("beforeend",cards); }
+          characterHeading.style.display="block"; characterHeading.textContent=activeFranchise.name;
+          status.textContent = pages.length ? `${pages.length} character portraits loaded${characterContinue?" · more available":""}. Select one to use it.` : `No character portraits were found in ${wiki}.fandom.com. Try another franchise or upload a photo.`;
+          characterMoreWrap.style.display=characterContinue && pages.length ? "flex" : "none";
         } catch (err) {
-          status.textContent = `Couldn't reach ${wiki}.fandom.com. Check the wiki name, or upload your own image instead.`;
-        }
+          status.textContent=`Couldn't load ${activeFranchise.name} from its character wiki. The wiki may be unavailable or block cross-site requests.`;
+          if (!loadMore) { characters.innerHTML=""; characterMoreWrap.style.display="none"; }
+        } finally { characterLoading=false; characterMore.disabled=false; }
       }
-      el.querySelector("#avatarSearchBtn").onclick = searchTitles;
-      el.querySelector("#avatarSearchQ").addEventListener("keydown", e => { if (e.key === "Enter") { e.preventDefault(); searchTitles(); } });
-      results.addEventListener("click", e => {
-        const b = e.target.closest("[data-avatar-title]"); if (!b) return;
-        const title = b.dataset.avatarTitle;
-        wikiInput.value = wikiForTitle(title);
-        characterInput.value = "";
-        characters.innerHTML = "";
-        status.textContent = `Character wiki set to ${wikiInput.value}. Enter a character name below. If this isn't the right wiki, edit the subdomain.`;
+      franchiseGrid.addEventListener("click", e=>{
+        const b=e.target.closest("[data-franchise]"); if(!b)return;
+        activeFranchise=franchises.find(f=>f.name===b.dataset.franchise); characterContinue=null;
+        franchiseGrid.querySelectorAll(".av-franchise").forEach(x=>x.classList.toggle("on",x===b));
+        characters.innerHTML=""; characterHeading.style.display="none"; characterMoreWrap.style.display="none";
+        fetchFranchiseCharacters(false);
       });
-      el.querySelector("#avatarCharacterSearchBtn").onclick = searchCharacterPages;
-      characterInput.addEventListener("keydown", e => { if (e.key === "Enter") { e.preventDefault(); searchCharacterPages(); } });
+      franchiseQuery.addEventListener("input",()=>{renderFranchises();});
+      el.querySelector("#avatarFranchiseSearchBtn").onclick=async()=>{
+        const q=franchiseQuery.value.trim(); tmdbFranchiseMatches=[];
+        if(!q){renderFranchises();return;}
+        renderFranchises();
+        if(!LIVE){status.textContent="Connect TMDB in config.js to search its movie and series catalog.";return;}
+        status.textContent="Searching TMDB for matching franchises…";
+        try{
+          const data=await tmdb("search/multi",{query:q});
+          const found=[];
+          for(const item of (data.results||[]).filter(x=>["movie","tv"].includes(x.media_type)).slice(0,15)){
+            const title=item.title||item.name||""; const franchise=resolveFranchise(title);
+            if(franchise && !found.some(x=>x.franchise.wiki===franchise.wiki)) found.push({title,franchise,poster:item.poster_path?`${IMG}w185${item.poster_path}`:null});
+          }
+          tmdbFranchiseMatches=found; renderFranchises();
+          status.textContent=found.length?`Found ${found.length} TMDB title match(es) with connected character wikis. Choose one to browse portraits.`:"No connected character wiki matched that TMDB search. Browse the featured franchises below.";
+        }catch{status.textContent="TMDB search failed. You can still browse the featured franchises below.";}
+      };
+      el.querySelector("#avatarFranchiseMore").onclick=()=>{franchiseVisible+=12;renderFranchises();};
+      characterMore.onclick=()=>fetchFranchiseCharacters(true);
+      renderFranchises();
       characters.addEventListener("click", e => {
         const b = e.target.closest("[data-avatar-photo]"); if (!b) return;
         photo = b.dataset.avatarPhoto; emoji = null; refreshPreview(); toast(`${b.dataset.avatarCharacter || "Character"} selected`);
