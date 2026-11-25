@@ -932,8 +932,8 @@
     const top = LIVE ? { label: "Top 10 Today", path: "trending/all/day" } : { pick: window.VESPERA_ROWS[1].pick.concat(window.VESPERA_ROWS[0].pick) };
     rows.splice(1, 0, asyncRow("Top 10 Today", null, async () => uniq(await data.row(top)), { rank: true }));
     return `
-    <div id="continueWatchingMount">${continueWatchingSection()}</div>
     ${heroShell()}
+    <div id="continueWatchingMount">${continueWatchingSection()}</div>
     ${mine.length ? row("Your List", mine.slice(0, 14), "#/list") : ""}
     ${rows.join("")}
     <section class="section" id="homeColls">
