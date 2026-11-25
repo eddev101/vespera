@@ -109,7 +109,7 @@
     </section>
     <style>
       .cw-head-actions{display:flex;align-items:center;gap:8px}.cw-manage,.cw-clear{border:1px solid var(--line);background:var(--panel,var(--line));color:var(--muted);border-radius:999px;padding:7px 12px;font:inherit;font-size:12px;cursor:pointer}.cw-manage[aria-pressed="true"]{color:var(--text);border-color:var(--accent)}.cw-clear{color:var(--muted)}
-      .cw-row-wrap{overflow-x:auto;scrollbar-width:thin;padding:0 var(--gutter)}.cw-row{display:grid;grid-auto-flow:column;grid-auto-columns:minmax(210px,24%);gap:14px;min-width:0}
+      .cw-row-wrap{overflow-x:auto;scrollbar-width:thin;padding:2px 0 10px}.cw-row{display:grid;grid-auto-flow:column;grid-auto-columns:minmax(210px,24%);gap:14px;min-width:0}
       .cw-card{position:relative;min-width:0;border:1px solid var(--line);border-radius:12px;overflow:hidden;background:var(--panel)}.cw-poster{position:relative;display:block;aspect-ratio:16/9;background:var(--panel,var(--line));overflow:hidden}.cw-poster img{width:100%;height:100%;display:block;object-fit:cover;transition:transform .35s}.cw-card:hover .cw-poster img{transform:scale(1.04)}.cw-placeholder{height:100%;display:grid;place-items:center;color:var(--muted);font-size:12px;letter-spacing:.18em}.cw-play{position:absolute;inset:0;display:grid;place-items:center;color:white;background:linear-gradient(0deg,rgba(0,0,0,.34),rgba(0,0,0,.06));opacity:0;transition:opacity .2s}.cw-card:hover .cw-play{opacity:1}.cw-play svg{width:42px;height:42px;padding:11px;border-radius:50%;background:rgba(0,0,0,.62)}.cw-progress{position:absolute;bottom:0;left:0;right:0;height:4px;background:rgba(255,255,255,.28)}.cw-progress i{display:block;height:100%;background:var(--accent);box-shadow:0 0 8px color-mix(in srgb,var(--accent) 55%,transparent)}
       .cw-meta{display:grid;grid-template-columns:1fr auto;gap:5px 8px;padding:10px 11px 11px}.cw-title{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:var(--text);font-weight:650;font-size:13px;text-decoration:none}.cw-episode{color:var(--muted);font-size:11px}.cw-time{grid-column:1/-1;color:var(--muted);font-size:11px}.cw-remove{display:none;position:absolute;top:8px;right:8px;width:27px;height:27px;border:1px solid rgba(255,255,255,.25);border-radius:50%;background:rgba(8,10,14,.82);color:#fff;font-size:20px;line-height:1;cursor:pointer}.cw-section.cw-managing .cw-remove{display:block}.cw-section.cw-managing .cw-poster{filter:saturate(.8)}
       @media(max-width:700px){.cw-row{grid-auto-columns:minmax(190px,68%);gap:11px}.cw-title{font-size:12px}}
@@ -812,7 +812,7 @@
   const notFound = () => `<div class="page">${empty("Lost in the dark", "That page doesn't exist.", `<a class="btn btn-primary" href="#/" style="margin-top:18px">Go home</a>`)}</div>`;
   const failBox = () => empty("Couldn't reach the catalog", LIVE ? "TMDB didn't respond — check the key in config.js or your connection." : "Something went wrong.");
 
-  const NAV = [["#/", "Home"], ["#/movies", "Movies"], ["#/series", "Series"], ["#/anime", "Anime"], ["#/constellations", "Constellations"], ["#/clips", "Clips"], ["#/list", "My List"]];
+  const NAV = [["#/", "Home"], ["#/movies", "Movies"], ["#/series", "Series"], ["#/anime", "Anime"], ["#/constellations", "Constellations"], ["#/clips", "Clips"], ["#/list", "My List"], ["#/downloads", "Downloads"]];
 
   function shell(route, inner) {
     const p = state.current; const others = state.profiles.filter(x => x.id !== p?.id);
@@ -1173,6 +1173,69 @@
       ${list.length ? `<div class="grid" id="listGrid">${list.map(card).join("")}</div><div id="listEmpty" hidden>${empty("No matches", "Nothing on your list matches that.")}</div>` :
         total ? empty("Nothing in this tab", "Try another tab.") :
         empty("Your list is empty", "Tap + on anything that catches your eye and it'll wait for you here.", `<a class="btn btn-primary" href="#/" style="margin-top:18px">Browse home</a>`)}</div>`;
+  }
+
+  // ---------- local downloads library ----------
+  const DOWNLOADS_META_KEY = "vespera.local-downloads.v1";
+  const DOWNLOADS_DB = "vespera-downloads";
+  const DOWNLOADS_STORE = "handles";
+  function readLocalDownloads() { try { const v = JSON.parse(localStorage.getItem(DOWNLOADS_META_KEY) || "[]"); return Array.isArray(v) ? v : []; } catch { return []; } }
+  function writeLocalDownloads(rows) { try { localStorage.setItem(DOWNLOADS_META_KEY, JSON.stringify(rows)); } catch { toast("Couldn't update the downloads list — browser storage may be full"); } }
+  function openDownloadsDB() { return new Promise((resolve, reject) => { if (!window.indexedDB) return reject(new Error("IndexedDB unavailable")); const req = window.indexedDB.open(DOWNLOADS_DB, 1); req.onupgradeneeded = () => req.result.createObjectStore(DOWNLOADS_STORE); req.onsuccess = () => resolve(req.result); req.onerror = () => reject(req.error); }); }
+  async function saveDownloadsHandle(handle) { const db = await openDownloadsDB(); return new Promise((resolve, reject) => { const tx = db.transaction(DOWNLOADS_STORE, "readwrite"); tx.objectStore(DOWNLOADS_STORE).put(handle, "directory"); tx.oncomplete = () => { db.close(); resolve(); }; tx.onerror = () => { db.close(); reject(tx.error); }; }); }
+  async function getDownloadsHandle() { const db = await openDownloadsDB(); return new Promise((resolve, reject) => { const tx = db.transaction(DOWNLOADS_STORE, "readonly"); const req = tx.objectStore(DOWNLOADS_STORE).get("directory"); req.onsuccess = () => { db.close(); resolve(req.result || null); }; req.onerror = () => { db.close(); reject(req.error); }; }); }
+  async function chooseDownloadsFolder() {
+    if (!window.showDirectoryPicker) { toast("Folder selection is supported in desktop Chrome or Edge. Use your browser's normal download option here."); return; }
+    try { const handle = await window.showDirectoryPicker({ id: "vespera-downloads", mode: "readwrite" }); await saveDownloadsHandle(handle); toast(`Vespera folder connected: ${handle.name}`); render(); }
+    catch (e) { if (e.name !== "AbortError") toast(`Couldn't connect folder: ${e.message}`); }
+  }
+  async function permittedDownloadsFolder() {
+    const handle = await getDownloadsHandle(); if (!handle) return null;
+    let permission = await handle.queryPermission({ mode: "readwrite" });
+    if (permission !== "granted") permission = await handle.requestPermission({ mode: "readwrite" });
+    return permission === "granted" ? handle : null;
+  }
+  function safeDownloadName(name) { return (String(name || "Vespera video").replace(/[\\/:*?"<>|\u0000-\u001f]/g, "_").replace(/\s+/g, " ").trim().slice(0, 150) || "Vespera video") + ".mp4"; }
+  async function saveDownloadToFolder(link, meta, button) {
+    let folder;
+    try { folder = await permittedDownloadsFolder(); } catch {}
+    if (!folder) { toast("Choose or reconnect your Vespera download folder first"); return; }
+    const original = button?.textContent; if (button) { button.disabled = true; button.textContent = "Saving…"; }
+    try {
+      const response = await fetch(link.url);
+      if (!response.ok) throw new Error(`Download server returned ${response.status}`);
+      const blob = await response.blob();
+      if (!blob.size) throw new Error("The download returned an empty file");
+      const fileName = safeDownloadName(meta.fileName || meta.title || link.name || "Vespera video");
+      const fileHandle = await folder.getFileHandle(fileName, { create: true });
+      const writable = await fileHandle.createWritable(); await writable.write(blob); await writable.close();
+      const rows = readLocalDownloads().filter(x => x.fileName !== fileName);
+      rows.unshift({ ...meta, fileName, size: blob.size, savedAt: Date.now(), status: "saved" }); writeLocalDownloads(rows);
+      toast("Saved to your Vespera folder");
+    } catch (e) {
+      const msg = e.message === "Failed to fetch" ? "This download source blocks direct browser saving (CORS). Use its Download link instead." : e.message;
+      toast(msg);
+    } finally { if (button) { button.disabled = false; button.textContent = original || "Save to folder"; } }
+  }
+  function formatFileSize(bytes) { const n = Number(bytes) || 0; return n >= 1073741824 ? `${(n/1073741824).toFixed(1)} GB` : n >= 1048576 ? `${(n/1048576).toFixed(0)} MB` : `${(n/1024).toFixed(0)} KB`; }
+  function pageDownloads() {
+    const rows = readLocalDownloads();
+    return `<div class="page ves-downloads-page"><div class="page-head"><div><p class="ves-dl-kicker">YOUR OFFLINE LIBRARY</p><h1>Downloads</h1><p>Movies and episodes saved to your device through Vespera.</p></div><button class="btn btn-primary" data-downloads-action="choose-folder">${icons.download} Choose folder</button></div>
+      <section class="ves-dl-folder"><div class="ves-dl-folder-icon">${icons.download}</div><div class="ves-dl-folder-copy"><strong>Vespera download folder</strong><span id="vesDlFolderStatus">Checking folder connection…</span></div><button class="btn btn-ghost" data-downloads-action="reconnect">Connect / reconnect</button></section>
+      <div class="ves-dl-toolbar"><span>${rows.length} saved ${rows.length === 1 ? "file" : "files"}</span><span>Files stay on this device</span></div>
+      ${rows.length ? `<div class="ves-dl-grid">${rows.map((x,i)=>`<article class="ves-dl-card"><div class="ves-dl-poster">${x.poster ? `<img src="${esc(x.poster)}" alt="" loading="lazy">` : `<span>VESPERA</span>`}<span class="ves-dl-ready">SAVED</span></div><div class="ves-dl-card-info"><strong>${esc(x.title || x.fileName)}</strong><span>${x.kind === "tv" ? `Season ${Number(x.season)||1} · Episode ${Number(x.episode)||1} · ` : ""}${formatFileSize(x.size)}${x.quality ? ` · ${esc(x.quality)}p` : ""}</span><div class="ves-dl-card-actions"><button class="btn btn-primary" data-downloads-action="play" data-index="${i}">${icons.play} Play</button><button class="btn btn-ghost" data-downloads-action="delete" data-index="${i}">Remove</button></div></div></article>`).join("")}</div>` : `<div class="ves-dl-empty"><div class="ves-dl-empty-icon">${icons.download}</div><h2>Your downloads will live here</h2><p>Choose a folder, then use <b>Save to folder</b> beside a download option on any movie or episode.</p><a class="btn btn-ghost" href="#/movies">Explore movies</a></div>`}
+      <p class="ves-dl-note">Folder saving requires a supported desktop browser (Chrome or Edge) and permission to access the folder. If a source blocks direct saving, use its regular Download link; those browser downloads cannot be automatically scanned or played by Vespera.</p></div>`;
+  }
+  async function mountDownloadsPage() {
+    const status = document.getElementById("vesDlFolderStatus"); if (!status) return;
+    try { const h = await getDownloadsHandle(); status.textContent = h ? `Connected: ${h.name} · permission may need reconnecting` : "No folder connected yet"; }
+    catch { status.textContent = "Folder access unavailable in this browser"; }
+  }
+  async function playLocalDownload(row) {
+    try { const folder = await permittedDownloadsFolder(); if (!folder) throw new Error("Reconnect your Vespera folder first");
+      const handle = await folder.getFileHandle(row.fileName); const file = await handle.getFile(); const url = URL.createObjectURL(file);
+      modal(`<div class="ves-dl-player"><div class="ves-dl-player-head"><div><p class="ves-dl-kicker">VESPERA · OFFLINE PLAYBACK</p><h2>${esc(row.title || row.fileName)}</h2></div><button class="ves-download-close" data-close aria-label="Close">×</button></div><video controls autoplay playsinline src="${url}"></video></div>`, (back, close) => { const video = back.querySelector("video"); const cleanup = () => { video.pause(); URL.revokeObjectURL(url); }; back.addEventListener("click", e => { if (e.target === back || e.target.closest("[data-close]")) cleanup(); }); });
+    } catch (e) { toast(e.message || "Couldn't open this saved file"); }
   }
 
   // Search
@@ -1924,7 +1987,43 @@
       .ves-download-actions button,.ves-download-actions a{flex:1;}
       .ves-download-toolbar{align-items:flex-start;flex-direction:column;}
     }
+    /* Downloads page: isolated classes only; uses the existing Vespera theme tokens. */
+    .ves-downloads-page .ves-dl-kicker{margin:0 0 7px;color:var(--accent);font-size:10px;font-weight:800;letter-spacing:.2em;text-transform:uppercase;}
+    .ves-downloads-page .page-head h1{margin:0;color:var(--text);}
+    .ves-downloads-page .page-head p:not(.ves-dl-kicker){color:var(--muted);}
+    .ves-dl-folder{display:flex;align-items:center;gap:14px;margin:22px 0 26px;padding:16px 18px;border:1px solid var(--line);border-radius:15px;background:var(--panel);}
+    .ves-dl-folder-icon,.ves-dl-empty-icon{display:grid;place-items:center;flex:0 0 44px;width:44px;height:44px;border-radius:13px;background:color-mix(in srgb,var(--accent) 13%,var(--panel));color:var(--accent);}
+    .ves-dl-folder-icon svg,.ves-dl-empty-icon svg{width:21px;height:21px;}
+    .ves-dl-folder-copy{display:grid;gap:4px;flex:1;min-width:0;}
+    .ves-dl-folder-copy strong{font-size:13px;color:var(--text);}
+    .ves-dl-folder-copy span,.ves-dl-toolbar,.ves-dl-card-info>span,.ves-dl-note{font-size:11px;color:var(--muted);line-height:1.55;}
+    .ves-dl-toolbar{display:flex;justify-content:space-between;gap:12px;padding-bottom:12px;border-bottom:1px solid var(--line);margin-bottom:18px;}
+    .ves-dl-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(185px,1fr));gap:18px;}
+    .ves-dl-card{min-width:0;overflow:hidden;border:1px solid var(--line);border-radius:14px;background:var(--panel);transition:transform .2s,border-color .2s;}
+    .ves-dl-card:hover{transform:translateY(-3px);border-color:color-mix(in srgb,var(--accent) 55%,var(--line));}
+    .ves-dl-poster{position:relative;aspect-ratio:2/3;background:var(--panel);display:grid;place-items:center;overflow:hidden;}
+    .ves-dl-poster img{width:100%;height:100%;object-fit:cover;}
+    .ves-dl-poster>span:first-child{color:var(--muted);font-size:12px;letter-spacing:.2em;}
+    .ves-dl-ready{position:absolute;top:9px;left:9px;padding:5px 8px;border-radius:6px;background:rgba(10,15,20,.82);color:#a9e8c1;font-size:9px;font-weight:800;letter-spacing:.12em;}
+    .ves-dl-card-info{display:grid;gap:7px;padding:12px;}
+    .ves-dl-card-info strong{font-size:13px;color:var(--text);overflow-wrap:anywhere;}
+    .ves-dl-card-actions{display:flex;gap:7px;margin-top:4px;}
+    .ves-dl-card-actions button{min-height:34px;padding:7px 10px;font-size:11px;}
+    .ves-dl-card-actions button:first-child{flex:1;}
+    .ves-dl-empty{text-align:center;padding:56px 18px;border:1px dashed var(--line);border-radius:16px;background:color-mix(in srgb,var(--panel) 55%,transparent);}
+    .ves-dl-empty-icon{margin:0 auto 15px;width:52px;height:52px;}
+    .ves-dl-empty h2{margin:0 0 8px;color:var(--text);font-size:19px;}
+    .ves-dl-empty p{max-width:460px;margin:0 auto 18px;color:var(--muted);font-size:12px;line-height:1.7;}
+    .ves-dl-note{margin:22px 0 0;max-width:820px;}
+    .ves-dl-player{padding:20px;}
+    .ves-dl-player-head{display:flex;justify-content:space-between;align-items:flex-start;gap:15px;margin-bottom:15px;}
+    .ves-dl-player h2{margin:0;font-size:18px;color:var(--text);}
+    .ves-dl-player video{display:block;width:min(100%,1000px);max-height:72vh;margin:auto;background:#000;border-radius:10px;}
+    .modal:has(.ves-dl-player){width:min(1050px,calc(100vw - 28px));max-width:1050px;padding:0;background:var(--bg,var(--panel));border:1px solid var(--line);}
+    @media(max-width:620px){.ves-dl-folder{align-items:flex-start;flex-wrap:wrap}.ves-dl-folder-copy{min-width:calc(100% - 65px)}.ves-dl-folder>.btn{width:100%}.ves-dl-grid{grid-template-columns:repeat(2,minmax(0,1fr));gap:11px}.ves-dl-card-info{padding:9px}.ves-dl-card-actions{flex-wrap:wrap}.ves-dl-card-actions button{font-size:10px}.ves-dl-toolbar{font-size:10px}}
+
   `;
+
   document.head.appendChild(downloadStyle);
 
   function openDownloadModal(it) {
@@ -1937,11 +2036,11 @@
     modal(`<div class="ves-download-modal"><header class="ves-download-head"><div class="ves-download-heading"><p class="ves-download-kicker">VESPERA · DOWNLOADS</p><h2>${esc(it.title)}</h2><p class="ves-download-subtitle">Choose an available source and quality to download</p></div><button class="ves-download-close" data-close aria-label="Close">×</button></header>${kind === "tv" ? `<div class="ves-download-selectors"><label><span class="sr-only">Season</span><select id="vesDownloadSeason">${seasonOptions}</select></label><label><span class="sr-only">Episode</span><select id="vesDownloadEpisode"><option value="1">Episode 1</option></select></label></div>` : ""}<div class="ves-download-toolbar"><span id="vesDownloadCount">Finding links…</span><div class="ves-download-filters">${[["all","All"],["4k","4K"],["1080p","1080p"]].map(([v,l])=>`<button type="button" data-dl-filter="${v}" class="${v===filter?"active":""}">${l}</button>`).join("")}</div></div><p class="ves-download-message" id="vesDownloadMessage">Loading download options…</p><div class="ves-download-list" id="vesDownloadList"></div></div>`, back => {
       const root=back.querySelector(".ves-download-modal"), count=root.querySelector("#vesDownloadCount"), message=root.querySelector("#vesDownloadMessage"), list=root.querySelector("#vesDownloadList"), seasonSel=root.querySelector("#vesDownloadSeason"), episodeSel=root.querySelector("#vesDownloadEpisode");
       const visible=()=>links.filter(x=>filter==="4k"?Number(x.quality)>=2160:filter==="1080p"?Number(x.quality)===1080:true);
-      const renderLinks=()=>{const filtered=visible();count.textContent=`Found ${links.length} links`;list.innerHTML=filtered.map((link,i)=>`<article class="ves-download-item"><div><strong>${esc(link.source||link.provider||"Download")}</strong><div class="ves-download-meta">${esc(link.quality?`${link.quality}p`:"Quality unavailable")}${link.size?` · ${esc(link.size)}`:""}</div><div class="ves-download-name">${esc(link.name||link.filename||link.provider||"")}</div></div><div class="ves-download-actions"><button type="button" data-copy-dl="${i}">${icons.share} Copy</button><a href="${esc(link.url)}" target="_blank" rel="noopener noreferrer">${icons.download} Download</a></div></article>`).join("");message.hidden=filtered.length>0;if(!filtered.length)message.textContent=links.length?"No links match this quality filter.":"No download links are available for this selection.";};
+      const renderLinks=()=>{const filtered=visible();count.textContent=`Found ${links.length} links`;list.innerHTML=filtered.map((link,i)=>`<article class="ves-download-item"><div><strong>${esc(link.source||link.provider||"Download")}</strong><div class="ves-download-meta">${esc(link.quality?`${link.quality}p`:"Quality unavailable")}${link.size?` · ${esc(link.size)}`:""}</div><div class="ves-download-name">${esc(link.name||link.filename||link.provider||"")}</div></div><div class="ves-download-actions"><button type="button" data-copy-dl="${i}">${icons.share} Copy</button><button type="button" data-save-dl="${i}">${icons.download} Save to folder</button><a href="${esc(link.url)}" target="_blank" rel="noopener noreferrer">${icons.download} Download</a></div></article>`).join("");message.hidden=filtered.length>0;if(!filtered.length)message.textContent=links.length?"No links match this quality filter.":"No download links are available for this selection.";};
       const loadLinks=async()=>{links=[];message.hidden=false;message.textContent="Loading download options…";message.classList.remove("ves-download-error");count.textContent="Finding links…";list.innerHTML="";try{const url=kind==="tv"?`${WING_DOWNLOADS}/tv/${encodeURIComponent(id)}/${season}/${episode}`:`${WING_DOWNLOADS}/movie/${encodeURIComponent(id)}`;const r=await fetch(url);if(!r.ok)throw new Error(`Download service returned ${r.status}`);const data=await r.json();if(!Array.isArray(data.links))throw new Error("Unexpected download response.");links=data.links;renderLinks();}catch(e){message.hidden=false;message.classList.add("ves-download-error");message.textContent=e.message==="Failed to fetch"?"Couldn't reach the download service. It may be temporarily unavailable or block browser requests.":e.message;count.textContent="Download links unavailable";}};
       const loadEpisodes=async()=>{message.hidden=false;message.textContent="Loading episodes…";try{const r=await fetch(`${FLIXSTAR_API}/tv/${encodeURIComponent(id)}/season/${encodeURIComponent(season)}`);if(!r.ok)throw new Error(`Episode list returned ${r.status}`);const data=await r.json();const eps=data.episodes||[];episodeSel.innerHTML=eps.map(x=>`<option value="${Number(x.episode_number)}">Episode ${Number(x.episode_number)}${x.name?` · ${esc(x.name)}`:""}</option>`).join("")||`<option value="1">Episode 1</option>`;episode=Number(episodeSel.value)||1;await loadLinks();}catch(e){message.hidden=false;message.textContent=`Couldn't load episodes: ${e.message}`;}};
       root.querySelectorAll("[data-dl-filter]").forEach(b=>b.addEventListener("click",()=>{filter=b.dataset.dlFilter;root.querySelectorAll("[data-dl-filter]").forEach(x=>x.classList.toggle("active",x===b));renderLinks();}));
-      root.addEventListener("click",async e=>{const b=e.target.closest("[data-copy-dl]");if(!b)return;const url=visible()[Number(b.dataset.copyDl)]?.url;if(!url)return;try{await navigator.clipboard.writeText(url);toast("Download link copied");}catch{window.prompt("Copy this download link:",url);}});
+      root.addEventListener("click",async e=>{const save=e.target.closest("[data-save-dl]");if(save){const link=visible()[Number(save.dataset.saveDl)];if(link){const episodeLabel=kind==="tv"?` S${season} E${episode}`:"";await saveDownloadToFolder(link,{kind,id,title:it.title,poster:it.poster||it.backdrop||"",season,episode,quality:link.quality,fileName:`${it.title}${episodeLabel} ${link.quality||""}`},save);}return;}const b=e.target.closest("[data-copy-dl]");if(!b)return;const url=visible()[Number(b.dataset.copyDl)]?.url;if(!url)return;try{await navigator.clipboard.writeText(url);toast("Download link copied");}catch{window.prompt("Copy this download link:",url);}});
       if(seasonSel)seasonSel.addEventListener("change",()=>{season=Number(seasonSel.value)||1;loadEpisodes();});if(episodeSel)episodeSel.addEventListener("change",()=>{episode=Number(episodeSel.value)||1;loadLinks();});
       if(kind==="tv")loadEpisodes();else loadLinks();
       const mo=new MutationObserver(()=>{if(!document.body.contains(back)){closed=true;mo.disconnect();}});mo.observe(document.body,{childList:true});
@@ -2219,7 +2318,7 @@
     if (route === "signin") { $app.innerHTML = pageSignin(params); setTitle("Sign in"); return mountPage(route, params); }
     if (route === "who") { $app.innerHTML = pageWho(parts[1] === "manage"); setTitle("Profiles"); return; }
 
-    if (LIVE) { try { await ensureGenres(); } catch { toast(SERVER ? "Couldn't reach the catalog — is the server running?" : "Couldn't reach TMDB — check config.js"); } }
+    if (LIVE && route !== "downloads") { try { await ensureGenres(); } catch { toast(SERVER ? "Couldn't reach the catalog — is the server running?" : "Couldn't reach TMDB — check config.js"); } }
     if (seq !== renderSeq) return;
 
     let inner, title = "";
@@ -2230,6 +2329,7 @@
       case "clips": inner = pageClips(); title = "Clips"; break;
       case "pairings": inner = pagePairings(); title = "Pairings"; break;
       case "list": inner = pageList(params); title = "My List"; break;
+      case "downloads": inner = pageDownloads(); title = "Downloads"; break;
       case "search": inner = pageSearch(params); title = "Search"; break;
       case "account": inner = pageAccount(); title = "Account"; break;
       case "title": inner = pageTitle(parts[1]); break;
@@ -2278,6 +2378,7 @@
       }
     }
     if (route === "clips") mountClips();
+    if (route === "downloads") mountDownloadsPage();
     if (route === "title") {
       const t = items.get(parts[1]);
       const sel = document.getElementById("seasonSel");
@@ -2476,6 +2577,15 @@
         toast(state.perf ? "Performance mode on — motion reduced" : "Performance mode off"); }
       if (a === "autoplay") { state.autoplay = !state.autoplay; act.querySelector(".switch").classList.toggle("on", state.autoplay); act.setAttribute("aria-checked", state.autoplay);
         toast(state.autoplay ? "Trailers will autoplay (muted)" : "Trailer autoplay off"); }
+      if (act.dataset.downloadsAction) {
+        const action = act.dataset.downloadsAction, index = Number(act.dataset.index), rows = readLocalDownloads();
+        if (action === "choose-folder" || action === "reconnect") chooseDownloadsFolder();
+        if (action === "play" && rows[index]) playLocalDownload(rows[index]);
+        if (action === "delete" && rows[index]) {
+          const row = rows[index];
+          (async () => { try { const folder = await permittedDownloadsFolder(); if (folder) await folder.removeEntry(row.fileName); } catch {} const next = readLocalDownloads().filter((_,i)=>i!==index); writeLocalDownloads(next); toast("Removed from Vespera downloads"); render(); })();
+        }
+      }
       if (a === "backup-export") exportVesperaBackup();
       if (a === "backup-import") document.getElementById("backupFile")?.click();
       if (a === "clear-list") modal(`<h2>Clear ${esc(state.current?.name)}'s list?</h2><p>This removes every saved title from this profile. It can't be undone.</p>
