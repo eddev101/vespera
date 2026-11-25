@@ -718,6 +718,7 @@
     rows.splice(1, 0, asyncRow("Top 10 Today", null, async () => uniq(await data.row(top)), { rank: true }));
     return `
     ${heroShell()}
+    <div id="continueWatchingMount">${continueWatchingSection()}</div>
     ${mine.length ? row("Your List", mine.slice(0, 14), "#/list") : ""}
     ${rows.join("")}
     <section class="section" id="homeColls">
